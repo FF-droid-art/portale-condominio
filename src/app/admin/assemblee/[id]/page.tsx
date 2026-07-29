@@ -133,31 +133,35 @@ export default async function AssembleaDettaglioPage({
           </p>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {puntiOdg.map((punto) => (
-            <PuntoOdgCard
-              key={punto.id}
-              punto={punto}
-              assembleaId={assemblea.id}
-              condominioId={assemblea.condominio_id}
-              millesimiTotali={millesimiTotali}
-            />
-          ))}
-          {!puntiOdg.length && (
-            <EmptyState
-              icon={ListChecks}
-              title="Nessun punto all'ordine del giorno"
-              description="Aggiungi il primo punto dal modulo qui sotto."
-            />
-          )}
-        </div>
+        <div className="flex flex-col lg:flex-row gap-8 items-start">
+          <div className="w-full lg:w-80 shrink-0 lg:sticky lg:top-24">
+            <Card>
+              <CardHeader>
+                <CardTitle>Aggiungi punto</CardTitle>
+              </CardHeader>
+              <PuntoOdgForm assembleaId={assemblea.id} prossimoNumero={prossimoNumero} />
+            </Card>
+          </div>
 
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle>Aggiungi punto</CardTitle>
-          </CardHeader>
-          <PuntoOdgForm assembleaId={assemblea.id} prossimoNumero={prossimoNumero} />
-        </Card>
+          <div className="flex-1 min-w-0 flex flex-col gap-3">
+            {puntiOdg.map((punto) => (
+              <PuntoOdgCard
+                key={punto.id}
+                punto={punto}
+                assembleaId={assemblea.id}
+                condominioId={assemblea.condominio_id}
+                millesimiTotali={millesimiTotali}
+              />
+            ))}
+            {!puntiOdg.length && (
+              <EmptyState
+                icon={ListChecks}
+                title="Nessun punto all'ordine del giorno"
+                description="Aggiungi il primo punto dal modulo a sinistra."
+              />
+            )}
+          </div>
+        </div>
       </section>
     </div>
   );
