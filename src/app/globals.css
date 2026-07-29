@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f2f2f5;
+  --foreground: #0a0a0a;
+  --surface: #ffffff;
+  --surface-muted: #ececef;
+  --border: rgb(0 0 0 / 0.08);
+  --border-strong: rgb(0 0 0 / 0.16);
+  --muted-foreground: #6b7280;
+
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-foreground: #ffffff;
+  --accent-2: #14b8a6;
+
+  --success: #16a34a;
+  --success-bg: #dcfce7;
+  --danger: #dc2626;
+  --danger-bg: #fee2e2;
+  --warning: #d97706;
+  --warning-bg: #fef3c7;
+  --neutral-bg: #f4f4f6;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 24px -8px rgb(0 0 0 / 0.10);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.06), 0 16px 32px -8px rgb(0 0 0 / 0.16);
+
+  /* Blu navy di brand, fisso: non cambia tra tema chiaro/scuro (come lo
+     sfondo della schermata di login di Revolut, sempre scuro). */
+  --navy: #0b0f1a;
+  --navy-2: #131c2e;
+  --navy-light: #3161b3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #f4f4f5;
+    --surface: #141416;
+    --surface-muted: #1c1c1f;
+    --border: rgb(255 255 255 / 0.10);
+    --border-strong: rgb(255 255 255 / 0.18);
+    --muted-foreground: #9ca3af;
+    --accent-foreground: #ffffff;
+    --success-bg: rgb(22 163 74 / 0.15);
+    --danger-bg: rgb(220 38 38 / 0.15);
+    --warning-bg: rgb(217 119 6 / 0.15);
+    --neutral-bg: #1c1c1f;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 24px -8px rgb(0 0 0 / 0.5);
+    --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.35), 0 16px 32px -8px rgb(0 0 0 / 0.6);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-2: var(--accent-2);
+
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-neutral-bg: var(--neutral-bg);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+
+  --color-navy: var(--navy);
+  --color-navy-2: var(--navy-2);
+  --color-navy-light: var(--navy-light);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Sfondo delle pagine di autenticazione: blu chiaro in alto a sinistra,
+   più scuro al centro, di nuovo più chiaro in basso a destra (stessa
+   diagonale del gradiente usato nell'hero della home). */
+.bg-auth {
+  background: linear-gradient(135deg, var(--navy-light), var(--navy) 50%, var(--navy-light));
+}

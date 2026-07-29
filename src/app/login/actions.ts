@@ -1,0 +1,31 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+
+export type StatoForm = { errore?: string } | undefined;
+
+export async function login(
+  _stato: StatoForm,
+  formData: FormData
+): Promise<StatoForm> {
+  const email = String(formData.get("email") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  if (!email || !password) {
+    return { errore: "Inserisci email e password." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    console.error("DEBUG login error:", error);
+    return { errore: "Email o password non corrette." };
+  }
+
+  redirect("/");
+}
