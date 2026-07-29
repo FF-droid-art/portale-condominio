@@ -1218,3 +1218,64 @@ begin
       (select count(*)::int from tmp_righe_import);
 end;
 $$;
+
+-- ============================================================
+-- Migrazione: collegamento condomini-unità + storage documenti
+-- Da applicare manualmente su Supabase (SQL Editor).
+--
+-- 1) utenti_select_self_or_admin non permetteva a un amministratore di
+--    "trovare" un condomino non ancora collegato a nessuna unità per
+--    poterlo assegnare (admin_gestisce_utente richiede che sia già
+--    collegato a un SUO condominio: circolare). Si aggiunge una terza
+--    clausola che rende visibili (solo nome/cognome/email) i condomini
+--    non ancora collegati a nessuna unità, indipendentemente da chi li
+--    vede: una volta assegnati spariscono automaticamente dalla vista
+--    degli altri amministratori (non sono più "non collegati").
+-- 2) Bucket storage privato "documenti-condominio" per fatture spese e
+--    verbali assemblea, con RLS sullo stesso modello delle tabelle:
+--    path "spese/{spesa_id}/..." e "assemblee/{assemblea_id}/...".
+-- ============================================================
+
+drop policy "utenti_select_self_or_admin" on utenti;
+create policy "utenti_select_self_or_admin" on utenti
+  for select using (
+    id = auth.uid()
+    or admin_gestisce_utente(id)
+    or (
+      ruolo_corrente() = 'amministratore'
+      and ruolo = 'condomino'
+      and not exists (select 1 from unita_proprietari up where up.utente_id = utenti.id)
+    )
+  );
+
+insert into storage.buckets (id, name, public)
+values ('documenti-condominio', 'documenti-condominio', false)
+on conflict (id) do nothing;
+
+create policy "documenti_select" on storage.objects for select using (
+  bucket_id = 'documenti-condominio' and (
+    ((storage.foldername(name))[1] = 'spese' and (
+      admin_gestisce_spesa(((storage.foldername(name))[2])::uuid)
+      or exists (select 1 from spese s where s.id = ((storage.foldername(name))[2])::uuid and appartiene_condominio(s.condominio_id))
+    ))
+    or
+    ((storage.foldername(name))[1] = 'assemblee' and (
+      admin_gestisce_assemblea(((storage.foldername(name))[2])::uuid)
+      or exists (select 1 from assemblee a where a.id = ((storage.foldername(name))[2])::uuid and appartiene_condominio(a.condominio_id))
+    ))
+  )
+);
+
+create policy "documenti_insert_admin" on storage.objects for insert with check (
+  bucket_id = 'documenti-condominio' and ruolo_corrente() = 'amministratore' and (
+    ((storage.foldername(name))[1] = 'spese' and admin_gestisce_spesa(((storage.foldername(name))[2])::uuid))
+    or ((storage.foldername(name))[1] = 'assemblee' and admin_gestisce_assemblea(((storage.foldername(name))[2])::uuid))
+  )
+);
+
+create policy "documenti_delete_admin" on storage.objects for delete using (
+  bucket_id = 'documenti-condominio' and ruolo_corrente() = 'amministratore' and (
+    ((storage.foldername(name))[1] = 'spese' and admin_gestisce_spesa(((storage.foldername(name))[2])::uuid))
+    or ((storage.foldername(name))[1] = 'assemblee' and admin_gestisce_assemblea(((storage.foldername(name))[2])::uuid))
+  )
+);
