@@ -24,7 +24,12 @@ export default function LoginPage() {
           </Field>
 
           <Field>
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link href="/recupera-password" className="text-sm text-accent">
+                Password dimenticata?
+              </Link>
+            </div>
             <Input id="password" name="password" type="password" required />
           </Field>
 

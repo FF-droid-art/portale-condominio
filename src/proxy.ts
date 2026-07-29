@@ -3,12 +3,17 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Route su cui un utente già autenticato viene rimandato indietro
 // (non ha senso restare su login/registrazione se si è già loggati).
-const ROUTE_PUBBLICHE = ["/login", "/registrazione"];
+const ROUTE_PUBBLICHE = ["/login", "/registrazione", "/recupera-password"];
 
 // Route raggiungibili anche senza essere autenticati. "/" è la pagina di
 // presentazione pubblica: un utente loggato che la visita non viene
 // forzato altrove da qui, ci pensa la pagina stessa (redirect in base al ruolo).
-const ROUTE_ACCESSIBILI_SENZA_LOGIN = ["/", ...ROUTE_PUBBLICHE];
+// "/reimposta-password" NON va in ROUTE_PUBBLICHE: il link dall'email porta i
+// token di recupero nel frammento dell'URL, invisibile al server, quindi la
+// prima richiesta arriva qui senza sessione (va tollerata) ma una volta che
+// il client stabilisce la sessione di recupero l'utente risulta "loggato" e
+// non va rimandato altrove, altrimenti non potrebbe mai completare il form.
+const ROUTE_ACCESSIBILI_SENZA_LOGIN = ["/", "/reimposta-password", ...ROUTE_PUBBLICHE];
 
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
