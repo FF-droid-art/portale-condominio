@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { User } from "lucide-react";
-import { cambiaRuolo } from "./actions";
+import { Eye, User } from "lucide-react";
+import { cambiaRuolo, visualizzaComeCondomino } from "./actions";
 import type { Utente } from "@/lib/types";
 import { TableRow, TableCell, RowIcon } from "@/components/ui/table";
 import { Select } from "@/components/ui/input";
@@ -32,6 +32,17 @@ export function RigaUtente({ utente }: { utente: Utente }) {
         </form>
         {stato?.errore && (
           <p className="text-xs text-danger mt-1">{stato.errore}</p>
+        )}
+      </TableCell>
+      <TableCell>
+        {utente.ruolo === "condomino" && (
+          <form action={visualizzaComeCondomino}>
+            <input type="hidden" name="utente_id" value={utente.id} />
+            <Button variant="secondary" size="sm" type="submit">
+              <Eye className="size-4" />
+              Visualizza come
+            </Button>
+          </form>
         )}
       </TableCell>
     </TableRow>

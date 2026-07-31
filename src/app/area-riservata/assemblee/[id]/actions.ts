@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
+import { verificaLimiteDelega } from "@/lib/deleghe";
 
 export type StatoForm = { errore?: string } | undefined;
 
@@ -45,4 +46,73 @@ export async function esprimiVoto(
 
   if (error) return { errore: error.message };
   revalidatePath(`/area-riservata/assemblee/${assembleaId}`);
+}
+
+export async function creaDelega(
+  _stato: StatoForm,
+  formData: FormData
+): Promise<StatoForm> {
+  const assembleaId = String(formData.get("assemblea_id") ?? "");
+  const unitaDeleganteId = String(formData.get("unita_delegante_id") ?? "");
+  const candidato = String(formData.get("candidato") ?? ""); // "unitaDelegataria|utenteDelegato"
+
+  const [unitaDelegatariaId, utenteDelegatoId] = candidato.split("|");
+
+  if (!assembleaId || !unitaDeleganteId || !unitaDelegatariaId || !utenteDelegatoId) {
+    return { errore: "Seleziona a chi vuoi delegare il voto." };
+  }
+  if (unitaDeleganteId === unitaDelegatariaId) {
+    return { errore: "Non puoi delegare la tua stessa unità." };
+  }
+
+  await richiedeUtente();
+  const supabase = await createClient();
+
+  const { data: assemblea } = await supabase
+    .from("assemblee")
+    .select("condominio_id")
+    .eq("id", assembleaId)
+    .single();
+  if (!assemblea) return { errore: "Assemblea non trovata." };
+
+  const { data: unitaDelegante } = await supabase
+    .from("unita")
+    .select("millesimi_proprieta")
+    .eq("id", unitaDeleganteId)
+    .single();
+  if (!unitaDelegante) return { errore: "Unità non trovata." };
+
+  const { errore: erroreLimite } = await verificaLimiteDelega(supabase, {
+    assembleaId,
+    condominioId: assemblea.condominio_id,
+    utenteDelegatoId,
+    millesimiNuovaDelega: unitaDelegante.millesimi_proprieta,
+  });
+  if (erroreLimite) return { errore: erroreLimite };
+
+  const { error } = await supabase.from("deleghe").insert({
+    assemblea_id: assembleaId,
+    unita_delegante_id: unitaDeleganteId,
+    unita_delegataria_id: unitaDelegatariaId,
+    utente_delegato_id: utenteDelegatoId,
+  });
+
+  if (error) {
+    if (error.code === "23505") return { errore: "Hai già delegato questa unità per questa assemblea." };
+    return { errore: error.message };
+  }
+
+  revalidatePath(`/area-riservata/assemblee/${assembleaId}`);
+}
+
+export async function revocaDelega(
+  delegaId: string,
+  assembleaId: string
+): Promise<{ errore?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("deleghe").delete().eq("id", delegaId);
+  if (error) return { errore: error.message };
+
+  revalidatePath(`/area-riservata/assemblee/${assembleaId}`);
+  return {};
 }

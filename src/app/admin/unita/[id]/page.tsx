@@ -1,8 +1,9 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Building2, Home, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Badge, StatoBadge } from "@/components/ui/badge";
 import {
   Table,
   TableHeader,
@@ -55,7 +56,9 @@ export default async function UnitaDettaglioPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm text-muted-foreground">
-              <RowIcon icon={Building2}>{unita.condominio?.nome}</RowIcon>
+              <Link href={`/admin/condomini/${unita.condominio_id}`} className="hover:text-accent">
+                <RowIcon icon={Building2}>{unita.condominio?.nome}</RowIcon>
+              </Link>
             </p>
             <h1 className="text-3xl font-bold tracking-tight mt-2">
               {unita.identificativo}
@@ -72,7 +75,7 @@ export default async function UnitaDettaglioPage({
         <div className="w-full lg:w-80 shrink-0 lg:sticky lg:top-24">
           <Card>
             <CardHeader>
-              <CardTitle>Aggiungi proprietario</CardTitle>
+              <CardTitle>Aggiungi soggetto</CardTitle>
             </CardHeader>
             <ProprietarioForm unitaId={unita.id} candidati={candidati} />
           </Card>
@@ -85,7 +88,9 @@ export default async function UnitaDettaglioPage({
                 <TableRow>
                   <TableHead>Condomino</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Ruolo</TableHead>
                   <TableHead>Quota</TableHead>
+                  <TableHead>Voto</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -99,7 +104,17 @@ export default async function UnitaDettaglioPage({
                     </TableCell>
                     <TableCell>{p.utente?.email}</TableCell>
                     <TableCell>
+                      <StatoBadge tipo="tipo_soggetto" valore={p.tipo_soggetto} />
+                    </TableCell>
+                    <TableCell>
                       <Badge variant="neutral">{p.quota_possesso}%</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {p.diritto_voto ? (
+                        <Badge variant="success">Sì</Badge>
+                      ) : (
+                        <Badge variant="neutral">No</Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       <RimuoviProprietarioButton id={p.id} unitaId={unita.id} />
@@ -111,7 +126,7 @@ export default async function UnitaDettaglioPage({
           ) : (
             <EmptyState
               icon={Home}
-              title="Nessun proprietario collegato"
+              title="Nessun soggetto collegato"
               description="Collega un condomino da questa unità perché possa accedere ai propri dati dall'area riservata."
             />
           )}

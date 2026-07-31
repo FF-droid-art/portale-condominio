@@ -54,7 +54,9 @@ export default async function CondominiPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h2 className="text-lg font-semibold tracking-tight">
-                        <RowIcon icon={Building2}>{c.nome}</RowIcon>
+                        <Link href={`/admin/condomini/${c.id}`} className="hover:text-accent">
+                          <RowIcon icon={Building2}>{c.nome}</RowIcon>
+                        </Link>
                       </h2>
                       <p className="text-sm text-muted-foreground pl-10.5">
                         {c.indirizzo}

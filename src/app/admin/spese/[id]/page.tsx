@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Home, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -34,11 +35,18 @@ export default async function SpesaDettaglioPage({
 
   if (!spesa) notFound();
 
-  const { data: ripartizioni } = await supabase
-    .from("ripartizioni")
-    .select("*, unita:unita_id(identificativo)")
-    .eq("spesa_id", id)
-    .order("identificativo", { foreignTable: "unita" });
+  const [{ data: ripartizioni }, { data: tabelleMillesimali }] = await Promise.all([
+    supabase
+      .from("ripartizioni")
+      .select("*, unita:unita_id(identificativo)")
+      .eq("spesa_id", id)
+      .order("identificativo", { foreignTable: "unita" }),
+    supabase
+      .from("tabelle_millesimali")
+      .select("id, nome")
+      .eq("condominio_id", spesa.condominio_id)
+      .order("nome"),
+  ]);
 
   const pagate = (ripartizioni ?? []).filter((r) => r.stato_pagamento === "pagato").length;
 
@@ -55,7 +63,11 @@ export default async function SpesaDettaglioPage({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm text-muted-foreground">{spesa.condominio?.nome}</p>
+            <p className="text-sm text-muted-foreground">
+              <Link href={`/admin/condomini/${spesa.condominio_id}`} className="hover:text-accent">
+                {spesa.condominio?.nome}
+              </Link>
+            </p>
             <h1 className="text-3xl font-bold tracking-tight">{spesa.descrizione}</h1>
             <p className="text-sm text-muted-foreground mt-1">{formatData(spesa.data_spesa)}</p>
           </div>
@@ -124,6 +136,7 @@ export default async function SpesaDettaglioPage({
                 spesaId={spesa.id}
                 condominioId={spesa.condominio_id}
                 importoTotale={spesa.importo_totale}
+                tabelleMillesimali={tabelleMillesimali ?? []}
               />
             }
           />

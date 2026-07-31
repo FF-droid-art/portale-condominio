@@ -5,6 +5,9 @@ export type Condominio = {
   nome: string;
   indirizzo: string;
   codice_fiscale: string | null;
+  iban: string | null;
+  banca: string | null;
+  intestatario_conto: string | null;
   amministratore_id: string;
   import_batch_id: string | null;
   created_at: string;
@@ -43,6 +46,22 @@ export type Ripartizione = {
   stato_pagamento: StatoPagamento;
   data_scadenza: string | null;
   data_pagamento: string | null;
+  codice_avviso: string | null;
+  stripe_checkout_session_id: string | null;
+};
+
+export type TabellaMillesimale = {
+  id: string;
+  condominio_id: string;
+  nome: string;
+  created_at: string;
+};
+
+export type ValoreMillesimale = {
+  id: string;
+  tabella_id: string;
+  unita_id: string;
+  valore: number;
 };
 
 export type TipoImportBatch = "unita" | "spese" | "condomini_unita";
@@ -54,6 +73,23 @@ export type ImportBatch = {
   nome_file: string;
   righe_importate: number;
   creato_da: string;
+  created_at: string;
+};
+
+export type TipoSoggetto =
+  | "proprietario"
+  | "nudo_proprietario"
+  | "usufruttuario"
+  | "conduttore"
+  | "comodatario";
+
+export type UnitaProprietario = {
+  id: string;
+  unita_id: string;
+  utente_id: string;
+  quota_possesso: number;
+  tipo_soggetto: TipoSoggetto;
+  diritto_voto: boolean;
   created_at: string;
 };
 
@@ -98,6 +134,15 @@ export type PuntoOdg = {
   tally_favorevole: number;
   tally_contrario: number;
   tally_astenuto: number;
+  created_at: string;
+};
+
+export type Delega = {
+  id: string;
+  assemblea_id: string;
+  unita_delegante_id: string;
+  unita_delegataria_id: string;
+  utente_delegato_id: string;
   created_at: string;
 };
 

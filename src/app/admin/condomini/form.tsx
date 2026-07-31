@@ -22,6 +22,18 @@ export function CondominioForm() {
         <Label htmlFor="codice_fiscale">Codice fiscale (opzionale)</Label>
         <Input id="codice_fiscale" name="codice_fiscale" placeholder="Codice fiscale" />
       </Field>
+      <Field>
+        <Label htmlFor="iban">IBAN (opzionale)</Label>
+        <Input id="iban" name="iban" placeholder="IT00 X000 0000 0000 0000 0000 000" />
+      </Field>
+      <Field>
+        <Label htmlFor="banca">Banca (opzionale)</Label>
+        <Input id="banca" name="banca" placeholder="Nome della banca" />
+      </Field>
+      <Field>
+        <Label htmlFor="intestatario_conto">Intestatario conto (opzionale)</Label>
+        <Input id="intestatario_conto" name="intestatario_conto" placeholder="Es. Condominio Via Roma 12" />
+      </Field>
 
       {stato?.errore && <p className="text-sm text-danger">{stato.errore}</p>}
 

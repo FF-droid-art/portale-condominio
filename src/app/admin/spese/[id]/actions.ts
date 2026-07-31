@@ -41,7 +41,8 @@ export async function aggiornaStatoPagamento(
 export async function generaRipartizioni(
   spesaId: string,
   condominioId: string,
-  importoTotale: number
+  importoTotale: number,
+  tabellaMillesimaleId?: string | null
 ): Promise<{ errore?: string }> {
   const supabase = await createClient();
 
@@ -56,17 +57,38 @@ export async function generaRipartizioni(
     return { errore: "Il condominio non ha ancora unità: aggiungile prima." };
   }
 
-  const millesimiTotali = unita.reduce((somma, u) => somma + u.millesimi_proprieta, 0);
-  if (millesimiTotali <= 0) {
-    return { errore: "I millesimi totali del condominio sono zero." };
+  // Di default si usano i millesimi generali (unita.millesimi_proprieta);
+  // se è stata scelta una tabella millesimale specifica (es. ascensore),
+  // si usano i suoi valori per unità al posto dei millesimi generali.
+  let millesimiPerUnita = new Map(unita.map((u) => [u.id, u.millesimi_proprieta]));
+  if (tabellaMillesimaleId) {
+    const { data: valori, error: erroreValori } = await supabase
+      .from("valori_millesimali")
+      .select("unita_id, valore")
+      .eq("tabella_id", tabellaMillesimaleId);
+
+    if (erroreValori) return { errore: erroreValori.message };
+    millesimiPerUnita = new Map(unita.map((u) => [u.id, 0]));
+    for (const v of valori ?? []) {
+      millesimiPerUnita.set(v.unita_id, v.valore);
+    }
   }
 
-  const righe = unita.map((u) => ({
-    spesa_id: spesaId,
-    unita_id: u.id,
-    importo_dovuto:
-      Math.round(((importoTotale * u.millesimi_proprieta) / millesimiTotali) * 100) / 100,
-  }));
+  const millesimiTotali = Array.from(millesimiPerUnita.values()).reduce((s, v) => s + v, 0);
+  if (millesimiTotali <= 0) {
+    return { errore: "I millesimi totali (della tabella selezionata) sono zero." };
+  }
+
+  const righe = unita
+    .filter((u) => (millesimiPerUnita.get(u.id) ?? 0) > 0)
+    .map((u) => ({
+      spesa_id: spesaId,
+      unita_id: u.id,
+      importo_dovuto:
+        Math.round(
+          ((importoTotale * (millesimiPerUnita.get(u.id) ?? 0)) / millesimiTotali) * 100
+        ) / 100,
+    }));
 
   // L'arrotondamento per unità può lasciare un residuo di pochi centesimi
   // rispetto all'importo totale: lo si assorbe sull'ultima riga così la

@@ -1,5 +1,6 @@
 import { richiedeUtente } from "@/lib/supabase/dal";
 import { NavHeader } from "@/components/nav-header";
+import { ImpersonazioneBanner } from "./impersonazione-banner";
 
 const LINK_CONDOMINO = [
   { href: "/area-riservata", label: "Dashboard" },
@@ -15,6 +16,7 @@ export default async function AreaRiservataLayout({
 
   return (
     <div className="flex flex-1 flex-col">
+      <ImpersonazioneBanner />
       <NavHeader utente={utente} links={LINK_CONDOMINO} />
       <main className="max-w-6xl mx-auto w-full px-4 py-8 flex-1">
         {children}

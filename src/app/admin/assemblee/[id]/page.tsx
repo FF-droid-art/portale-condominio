@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ListChecks } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -38,7 +39,7 @@ export default async function AssembleaDettaglioPage({
     verbaleSignedUrl = data?.signedUrl ?? null;
   }
 
-  const [{ data: unitaCondominio }, { data: puntiOdgData }] = await Promise.all([
+  const [{ data: unitaCondominio }, { data: puntiOdgData }, { data: delegheData }] = await Promise.all([
     supabase
       .from("unita")
       .select("id, millesimi_proprieta")
@@ -48,6 +49,12 @@ export default async function AssembleaDettaglioPage({
       .select("*")
       .eq("assemblea_id", id)
       .order("numero_punto", { ascending: true }),
+    supabase
+      .from("deleghe")
+      .select(
+        "id, unita_delegante:unita_delegante_id(identificativo, millesimi_proprieta), utente_delegato:utente_delegato_id(nome, cognome)"
+      )
+      .eq("assemblea_id", id),
   ]);
 
   const puntiOdg = (puntiOdgData ?? []) as PuntoOdg[];
@@ -80,7 +87,9 @@ export default async function AssembleaDettaglioPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm text-muted-foreground">
-              {(assemblea.condominio as unknown as { nome: string } | null)?.nome}
+              <Link href={`/admin/condomini/${assemblea.condominio_id}`} className="hover:text-accent">
+                {(assemblea.condominio as unknown as { nome: string } | null)?.nome}
+              </Link>
             </p>
             <h1 className="text-3xl font-bold tracking-tight">
               Assemblea {assemblea.tipo}
@@ -123,6 +132,31 @@ export default async function AssembleaDettaglioPage({
           {formatMillesimi(millesimiPartecipanti)} / {formatMillesimi(millesimiTotali)} millesimi
         </p>
       </Card>
+
+      {delegheData && delegheData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Deleghe</CardTitle>
+          </CardHeader>
+          <ul className="flex flex-col gap-2 text-sm">
+            {delegheData.map((d) => {
+              const delegante = d.unita_delegante as unknown as {
+                identificativo: string;
+                millesimi_proprieta: number;
+              } | null;
+              const delegato = d.utente_delegato as unknown as { nome: string; cognome: string } | null;
+              return (
+                <li key={d.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-muted/50 p-3">
+                  <span>
+                    <strong>{delegante?.identificativo}</strong> ({formatMillesimi(delegante?.millesimi_proprieta ?? 0)}{" "}
+                    millesimi) → {delegato?.nome} {delegato?.cognome}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
 
       <section className="flex flex-col gap-4">
         <div>

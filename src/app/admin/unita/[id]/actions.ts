@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 
 export type StatoForm = { errore?: string } | undefined;
 
+const TIPI_SOGGETTO = ["proprietario", "nudo_proprietario", "usufruttuario", "conduttore", "comodatario"];
+
 export async function aggiungiProprietario(
   _stato: StatoForm,
   formData: FormData
@@ -12,9 +14,14 @@ export async function aggiungiProprietario(
   const unitaId = String(formData.get("unita_id") ?? "");
   const utenteId = String(formData.get("utente_id") ?? "");
   const quota = Number(formData.get("quota_possesso"));
+  const tipoSoggetto = String(formData.get("tipo_soggetto") ?? "proprietario");
+  const dirittoVoto = formData.get("diritto_voto") === "on";
 
   if (!unitaId || !utenteId || !Number.isFinite(quota) || quota <= 0 || quota > 100) {
     return { errore: "Seleziona un condomino e una quota valida (1-100)." };
+  }
+  if (!TIPI_SOGGETTO.includes(tipoSoggetto)) {
+    return { errore: "Ruolo non valido." };
   }
 
   const supabase = await createClient();
@@ -22,6 +29,8 @@ export async function aggiungiProprietario(
     unita_id: unitaId,
     utente_id: utenteId,
     quota_possesso: quota,
+    tipo_soggetto: tipoSoggetto,
+    diritto_voto: dirittoVoto,
   });
 
   if (error) {

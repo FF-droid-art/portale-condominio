@@ -52,6 +52,13 @@ const MAPPE_STATO: Record<string, Record<string, { label: string; variant: Varia
     amministratore: { label: "Amministratore", variant: "accent" },
     condomino: { label: "Condòmino", variant: "neutral" },
   },
+  tipo_soggetto: {
+    proprietario: { label: "Proprietario", variant: "neutral" },
+    nudo_proprietario: { label: "Nudo proprietario", variant: "neutral" },
+    usufruttuario: { label: "Usufruttuario", variant: "accent" },
+    conduttore: { label: "Conduttore", variant: "warning" },
+    comodatario: { label: "Comodatario", variant: "warning" },
+  },
 };
 
 export function StatoBadge({

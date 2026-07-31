@@ -5,6 +5,14 @@ import { aggiungiProprietario } from "./actions";
 import { Field, Input, Label, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+const OPZIONI_TIPO_SOGGETTO: { value: string; label: string }[] = [
+  { value: "proprietario", label: "Proprietario" },
+  { value: "nudo_proprietario", label: "Nudo proprietario" },
+  { value: "usufruttuario", label: "Usufruttuario" },
+  { value: "conduttore", label: "Conduttore" },
+  { value: "comodatario", label: "Comodatario" },
+];
+
 export function ProprietarioForm({
   unitaId,
   candidati,
@@ -33,6 +41,17 @@ export function ProprietarioForm({
       </Field>
 
       <Field>
+        <Label htmlFor="tipo_soggetto">Ruolo</Label>
+        <Select id="tipo_soggetto" name="tipo_soggetto" defaultValue="proprietario">
+          {OPZIONI_TIPO_SOGGETTO.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field>
         <Label htmlFor="quota_possesso">Quota di possesso (%)</Label>
         <Input
           id="quota_possesso"
@@ -46,10 +65,15 @@ export function ProprietarioForm({
         />
       </Field>
 
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="diritto_voto" defaultChecked className="size-4" />
+        Ha diritto di voto in assemblea
+      </label>
+
       {stato?.errore && <p className="text-sm text-danger">{stato.errore}</p>}
 
       <Button type="submit" pending={pending} disabled={!candidati.length}>
-        {candidati.length ? "Aggiungi proprietario" : "Nessun condomino disponibile"}
+        {candidati.length ? "Aggiungi soggetto" : "Nessun condomino disponibile"}
       </Button>
     </form>
   );

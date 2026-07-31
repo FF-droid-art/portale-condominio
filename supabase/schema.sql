@@ -1279,3 +1279,275 @@ create policy "documenti_delete_admin" on storage.objects for delete using (
     or ((storage.foldername(name))[1] = 'assemblee' and admin_gestisce_assemblea(((storage.foldername(name))[2])::uuid))
   )
 );
+
+-- ============================================================
+-- Migrazione: conto corrente del condominio
+-- Da applicare manualmente su Supabase (SQL Editor).
+--
+-- Solo dati anagrafici del conto (IBAN, banca, intestatario): nessuna
+-- integrazione bancaria, sono campi informativi mostrati in bacheca
+-- e nei documenti (es. avvisi di pagamento) così i condòmini sanno
+-- dove versare le quote. Nessuna nuova policy: coperti dalle policy
+-- "condomini_select" / "condomini_write_admin" già esistenti, che si
+-- applicano a livello di riga e quindi a tutte le colonne.
+-- ============================================================
+
+alter table condomini
+  add column if not exists iban text,
+  add column if not exists banca text,
+  add column if not exists intestatario_conto text;
+
+-- ============================================================
+-- Migrazione: tipo di soggetto collegato a un'unità
+-- Da applicare manualmente su Supabase (SQL Editor).
+--
+-- "unita_proprietari" finora trattava ogni riga come un proprietario
+-- pieno. In realtà più figure possono essere collegate a un'unità
+-- (nudo proprietario, usufruttuario, conduttore, comodatario), con
+-- diritti diversi (es. il conduttore partecipa alle assemblee ma di
+-- norma non vota sulle delibere che non lo riguardano). Si estende
+-- la tabella esistente invece di crearne una nuova per non toccare
+-- le policy RLS e la logica di voto già basate su "possiede_unita" /
+-- "unita_proprietari": ogni soggetto collegato continua ad avere
+-- accesso ai dati della propria unità come oggi, cambia solo
+-- l'etichetta e, se l'amministratore lo imposta, il diritto di voto.
+--
+-- "diritto_voto" di default true per non rompere nulla di esistente:
+-- nessuna logica automatica in base al tipo (la casistica reale
+-- dipende dal tipo di delibera ed è compito dell'amministratore),
+-- solo un interruttore esplicito che l'app potrà rispettare in fasi
+-- successive (es. nascondere il pulsante di voto se false).
+-- ============================================================
+
+alter table unita_proprietari
+  add column if not exists tipo_soggetto text not null default 'proprietario'
+    check (tipo_soggetto in ('proprietario', 'nudo_proprietario', 'usufruttuario', 'conduttore', 'comodatario')),
+  add column if not exists diritto_voto boolean not null default true;
+
+-- ============================================================
+-- Migrazione: tabelle millesimali multiple (ascensore, riscaldamento, ecc.)
+-- Da applicare manualmente su Supabase (SQL Editor).
+--
+-- "unita.millesimi_proprieta" resta invariato ed è la tabella
+-- "Generale" implicita: non viene toccato per non impattare la
+-- logica di voto/quorum/ripartizione esistente, che continua a
+-- funzionare esattamente come oggi. Le nuove tabelle sono additive e
+-- servono per i casi in cui una spesa va ripartita su una proporzione
+-- diversa dai millesimi generali (es. l'ascensore, a cui i piani
+-- terra spesso non partecipano).
+-- ============================================================
+
+create table if not exists tabelle_millesimali (
+  id uuid primary key default gen_random_uuid(),
+  condominio_id uuid not null references condomini(id) on delete cascade,
+  nome text not null,
+  created_at timestamptz not null default now(),
+  unique (condominio_id, nome)
+);
+
+create index if not exists idx_tabelle_millesimali_condominio on tabelle_millesimali(condominio_id);
+
+create table if not exists valori_millesimali (
+  id uuid primary key default gen_random_uuid(),
+  tabella_id uuid not null references tabelle_millesimali(id) on delete cascade,
+  unita_id uuid not null references unita(id) on delete cascade,
+  valore numeric(6,3) not null default 0 check (valore >= 0),
+  unique (tabella_id, unita_id)
+);
+
+create index if not exists idx_valori_millesimali_tabella on valori_millesimali(tabella_id);
+create index if not exists idx_valori_millesimali_unita on valori_millesimali(unita_id);
+
+alter table tabelle_millesimali enable row level security;
+alter table valori_millesimali enable row level security;
+
+create policy "tabelle_millesimali_select" on tabelle_millesimali
+  for select using (
+    admin_possiede_condominio(condominio_id) or appartiene_condominio(condominio_id)
+  );
+
+create policy "tabelle_millesimali_write_admin" on tabelle_millesimali
+  for all using (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id));
+
+create policy "valori_millesimali_select" on valori_millesimali
+  for select using (admin_gestisce_unita(unita_id) or possiede_unita(unita_id));
+
+create policy "valori_millesimali_write_admin" on valori_millesimali
+  for all using (ruolo_corrente() = 'amministratore' and admin_gestisce_unita(unita_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_gestisce_unita(unita_id));
+
+-- ============================================================
+-- Migrazione: delega digitale in assemblea
+-- Da applicare manualmente su Supabase (SQL Editor).
+--
+-- La tabella "deleghe" esisteva già ma non era usata da nessuna
+-- pagina dell'app. Questa migrazione aggiunge quanto serve perché un
+-- condomino possa votare anche per un'unità che gli è stata delegata:
+--
+-- 1) condominio_conteggio_unita: come condominio_millesimi_totali già
+--    esistente, ma restituisce il NUMERO di unità invece della somma
+--    millesimi. Serve lato applicazione per verificare il limite di
+--    legge (art. 67 disp. att. c.c.) sul numero massimo di deleghe
+--    cumulabili da uno stesso delegato: un condomino normale non può
+--    leggere le unità altrui (policy "unita_select"), quindi senza
+--    questa funzione non potrebbe calcolare il totale.
+-- 2) deleghe_riepilogo_delegato: quante deleghe (e quanti millesimi)
+--    ha già ricevuto un certo delegato per una certa assemblea.
+--    Restituisce solo un aggregato (mai le singole deleghe altrui),
+--    e resta ristretta a chi appartiene al condominio dell'assemblea
+--    o la amministra — stesso principio di condominio_millesimi_totali.
+-- 3) Le policy di insert/update sui voti permettevano di votare solo
+--    al proprietario dell'unità (possiede_unita). Si aggiunge la
+--    possibilità di votare anche a chi ha ricevuto una delega per
+--    quella specifica unità in quella specifica assemblea.
+-- ============================================================
+
+create or replace function public.condominio_conteggio_unita(p_condominio_id uuid)
+returns int
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select count(*)::int
+  from unita
+  where condominio_id = p_condominio_id
+    and (ruolo_corrente() = 'amministratore' or appartiene_condominio(p_condominio_id));
+$$;
+
+grant execute on function condominio_conteggio_unita(uuid) to authenticated;
+
+create or replace function public.deleghe_riepilogo_delegato(
+  p_assemblea_id uuid,
+  p_utente_delegato_id uuid
+)
+returns table (numero_deleghe int, millesimi_totali numeric)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    count(*)::int,
+    coalesce(sum(u.millesimi_proprieta), 0)
+  from deleghe d
+  join unita u on u.id = d.unita_delegante_id
+  join assemblee a on a.id = d.assemblea_id
+  where d.assemblea_id = p_assemblea_id
+    and d.utente_delegato_id = p_utente_delegato_id
+    and (ruolo_corrente() = 'amministratore' or appartiene_condominio(a.condominio_id));
+$$;
+
+grant execute on function deleghe_riepilogo_delegato(uuid, uuid) to authenticated;
+
+-- 4) candidati_delega: elenco dei condòmini (con diritto di voto) a cui
+--    un condomino può delegare il proprio voto in un'assemblea. La
+--    policy "unita_proprietari_select" limita ogni condomino a vedere
+--    solo le proprie righe, quindi senza questa funzione non potrebbe
+--    scoprire chi altro appartiene al condominio.
+create or replace function public.candidati_delega(p_condominio_id uuid)
+returns table (utente_id uuid, nome text, cognome text, unita_id uuid, identificativo text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select up.utente_id, ut.nome, ut.cognome, u.id, u.identificativo
+  from unita_proprietari up
+  join unita u on u.id = up.unita_id
+  join utenti ut on ut.id = up.utente_id
+  where u.condominio_id = p_condominio_id
+    and up.diritto_voto = true
+    and up.utente_id <> auth.uid()
+    and (ruolo_corrente() = 'amministratore' or appartiene_condominio(p_condominio_id));
+$$;
+
+grant execute on function candidati_delega(uuid) to authenticated;
+
+drop policy "voti_insert_condomino" on voti;
+create policy "voti_insert_condomino" on voti
+  for insert with check (
+    (ruolo_corrente() = 'amministratore' and admin_gestisce_unita(unita_id))
+    or (
+      exists (
+        select 1 from punti_odg p
+        where p.id = voti.punto_id and p.stato_votazione = 'aperta'
+      )
+      and (
+        (utente_id = auth.uid() and possiede_unita(unita_id))
+        or (
+          utente_id = auth.uid()
+          and exists (
+            select 1 from deleghe d
+            join punti_odg p on p.id = voti.punto_id
+            where d.assemblea_id = p.assemblea_id
+              and d.unita_delegante_id = voti.unita_id
+              and d.utente_delegato_id = auth.uid()
+          )
+        )
+      )
+    )
+  );
+
+drop policy "voti_update_condomino" on voti;
+create policy "voti_update_condomino" on voti
+  for update using (
+    utente_id = auth.uid()
+    and exists (
+      select 1 from punti_odg p
+      where p.id = voti.punto_id and p.stato_votazione = 'aperta'
+    )
+    and (
+      possiede_unita(unita_id)
+      or exists (
+        select 1 from deleghe d
+        join punti_odg p on p.id = voti.punto_id
+        where d.assemblea_id = p.assemblea_id
+          and d.unita_delegante_id = voti.unita_id
+          and d.utente_delegato_id = auth.uid()
+      )
+    )
+  )
+  with check (
+    utente_id = auth.uid()
+    and exists (
+      select 1 from punti_odg p
+      where p.id = voti.punto_id and p.stato_votazione = 'aperta'
+    )
+    and (
+      possiede_unita(unita_id)
+      or exists (
+        select 1 from deleghe d
+        join punti_odg p on p.id = voti.punto_id
+        where d.assemblea_id = p.assemblea_id
+          and d.unita_delegante_id = voti.unita_id
+          and d.utente_delegato_id = auth.uid()
+      )
+    )
+  );
+
+-- ============================================================
+-- Migrazione: pagamento online con codice di riferimento (Stripe)
+-- Da applicare manualmente su Supabase (SQL Editor).
+--
+-- "codice_avviso" è il numero di riferimento leggibile mostrato al
+-- condomino (come un numero d'ordine/avviso di pagamento). Viene
+-- generato automaticamente da una sequenza al momento dell'insert,
+-- così sia le ripartizioni create dall'app sia quelle create dalla
+-- funzione "importa_spese_storiche" lo ottengono senza bisogno di
+-- modificare quella funzione. "stripe_checkout_session_id" collega
+-- la rata alla sessione di pagamento Stripe che l'ha generata; il
+-- webhook lo usa per correlare l'evento "checkout.session.completed"
+-- alla riga da aggiornare.
+-- ============================================================
+
+create sequence if not exists ripartizioni_codice_seq;
+
+alter table ripartizioni
+  add column if not exists codice_avviso text unique
+    default (
+      'RIP-' || to_char(now(), 'YYYY') || '-' ||
+      lpad(nextval('ripartizioni_codice_seq')::text, 6, '0')
+    ),
+  add column if not exists stripe_checkout_session_id text;

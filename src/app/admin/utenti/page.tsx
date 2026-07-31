@@ -30,6 +30,7 @@ export default async function UtentiPage() {
               <TableHead>Nome</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Ruolo</TableHead>
+              <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

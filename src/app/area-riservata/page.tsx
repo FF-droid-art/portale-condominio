@@ -6,6 +6,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, RowIcon 
 import { StatoBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatValuta, formatData, formatMillesimi } from "@/lib/format";
+import { PagamentoButton } from "./pagamento-button";
 
 type UnitaPosseduta = {
   quota_possesso: number;
@@ -23,6 +24,7 @@ type Ripartizione = {
   importo_dovuto: number;
   stato_pagamento: string;
   data_scadenza: string | null;
+  codice_avviso: string | null;
   spesa: { descrizione: string; categoria: string } | null;
 };
 
@@ -47,7 +49,7 @@ export default async function AreaRiservataPage() {
     const { data: dataRipartizioni } = await supabase
       .from("ripartizioni")
       .select(
-        "id, importo_dovuto, stato_pagamento, data_scadenza, spesa:spesa_id(descrizione, categoria)"
+        "id, importo_dovuto, stato_pagamento, data_scadenza, codice_avviso, spesa:spesa_id(descrizione, categoria)"
       )
       .in("unita_id", unitaIds)
       .order("data_scadenza", { ascending: true });
@@ -106,7 +108,9 @@ export default async function AreaRiservataPage() {
                 <TableHead>Categoria</TableHead>
                 <TableHead>Importo</TableHead>
                 <TableHead>Scadenza</TableHead>
+                <TableHead>Codice avviso</TableHead>
                 <TableHead>Stato</TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -120,8 +124,12 @@ export default async function AreaRiservataPage() {
                   <TableCell>
                     {r.data_scadenza ? formatData(r.data_scadenza) : "-"}
                   </TableCell>
+                  <TableCell className="font-mono text-xs">{r.codice_avviso ?? "-"}</TableCell>
                   <TableCell>
                     <StatoBadge tipo="stato_pagamento" valore={r.stato_pagamento} />
+                  </TableCell>
+                  <TableCell>
+                    {r.stato_pagamento !== "pagato" && <PagamentoButton ripartizioneId={r.id} />}
                   </TableCell>
                 </TableRow>
               ))}
