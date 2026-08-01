@@ -55,11 +55,11 @@ export default async function UnitaDettaglioPage({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground">
               <Link href={`/admin/condomini/${unita.condominio_id}`} className="hover:text-accent">
                 <RowIcon icon={Building2}>{unita.condominio?.nome}</RowIcon>
               </Link>
-            </p>
+            </div>
             <h1 className="text-3xl font-bold tracking-tight mt-2">
               {unita.identificativo}
             </h1>
