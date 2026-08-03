@@ -11,6 +11,7 @@ import { TabellaAnteprima } from "@/components/import/tabella-anteprima";
 import { CAMPI_CONDOMINI_UNITA } from "@/lib/import/campi";
 import { suggerisciMappatura } from "@/lib/import/mappatura";
 import { costruisciRighe, type RigaGrezzaCostruita } from "@/lib/import/costruisci-righe";
+import { preparaRigheCondominioUnita } from "@/lib/import/collassa";
 import { validaRigaCondominioUnita } from "@/lib/import/validazione";
 import type { FoglioAnalizzato, RigaImportCondominioUnita } from "@/lib/import/tipi";
 import { importaCondominiUnita, type EsitoImportCondominiUnita } from "./actions";
@@ -41,7 +42,11 @@ export function ImportCondominiUnitaWizard() {
 
   const righe = useMemo(() => {
     if (!foglio) return [];
-    return convertiRighe(costruisciRighe(CAMPI_CONDOMINI_UNITA, mappatura, foglio.righe));
+    const grezze = convertiRighe(costruisciRighe(CAMPI_CONDOMINI_UNITA, mappatura, foglio.righe));
+    // Deriva il nome dall'indirizzo se assente e fonde le righe della stessa
+    // unità (più occupanti) in un'unica unità: l'anteprima mostra le unità
+    // effettive, non le righe grezze del file.
+    return preparaRigheCondominioUnita(grezze);
   }, [foglio, mappatura]);
 
   const erroriPerRiga = useMemo(() => righe.map((r) => validaRigaCondominioUnita(r)), [righe]);
@@ -106,9 +111,11 @@ export function ImportCondominiUnitaWizard() {
       {fase === "verifica" && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            {condominiDistinti} condomìni distinti individuati nel file (righe con
-            stesso nome e indirizzo vengono raggruppate nello stesso condominio;
-            se già esistente viene riutilizzato, altrimenti creato).
+            {condominiDistinti} condomìni distinti e {righe.length} unità individuati
+            nel file. Le righe con stesso nome e indirizzo finiscono nello stesso
+            condominio (riutilizzato se già esistente, altrimenti creato); le righe
+            che descrivono la stessa unità (più occupanti) sono state unite in
+            un&apos;unica unità.
           </p>
           <TabellaAnteprima
             colonne={[

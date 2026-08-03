@@ -15,6 +15,19 @@ export type FoglioAnalizzato = {
   righe: unknown[][];
 };
 
+// Un foglio "grezzo": tutte le righe (intestazioni comprese) prima di
+// decidere quale sia la riga d'intestazione. I gestionali veri esportano
+// spesso righe-titolo iniziali e più fogli nello stesso file, quindi non
+// si può più assumere che l'intestazione sia sempre la prima riga.
+export type FoglioGrezzo = {
+  nome: string;
+  righe: unknown[][];
+};
+
+export type FileAnalizzato = {
+  fogli: FoglioGrezzo[];
+};
+
 export type RigaImportUnita = {
   identificativo: string;
   piano: string | null;

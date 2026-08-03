@@ -25,19 +25,25 @@ export const CAMPI_UNITA: CampoImport[] = [
 ];
 
 export const CAMPI_CONDOMINI_UNITA: CampoImport[] = [
-  {
-    chiave: "nomeCondominio",
-    etichetta: "Nome condominio",
-    obbligatorio: true,
-    tipo: "testo",
-    sinonimi: ["condominio", "nome condominio", "stabile", "edificio"],
-  },
+  // Nota: l'indirizzo è elencato prima del nome di proposito. La mappatura
+  // automatica è greedy in ordine di campo; così la colonna "Indirizzo
+  // condominio" viene assegnata all'indirizzo e non catturata dal sinonimo
+  // "condominio" del nome.
   {
     chiave: "indirizzoCondominio",
     etichetta: "Indirizzo condominio",
     obbligatorio: true,
     tipo: "testo",
     sinonimi: ["indirizzo", "via"],
+  },
+  {
+    chiave: "nomeCondominio",
+    etichetta: "Nome condominio",
+    // Opzionale: molti export hanno solo l'indirizzo. Se non mappato, il
+    // nome del condominio viene derivato dall'indirizzo (vedi preparaRighe).
+    obbligatorio: false,
+    tipo: "testo",
+    sinonimi: ["nome condominio", "condominio", "stabile", "edificio"],
   },
   {
     chiave: "codiceFiscaleCondominio",
