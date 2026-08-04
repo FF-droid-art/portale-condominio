@@ -1551,3 +1551,368 @@ alter table ripartizioni
       lpad(nextval('ripartizioni_codice_seq')::text, 6, '0')
     ),
   add column if not exists stripe_checkout_session_id text;
+
+
+-- ============================================================
+-- Migrazione: anagrafiche persone + import legami (Fase 3)
+-- Da applicare su Supabase (SQL Editor). Idempotente.
+--
+-- Introduce le PERSONE del condominio come registro SLEGATO dal login:
+-- una persona che non accede mai al portale (società, ex proprietario,
+-- ecc.) esiste comunque in "anagrafiche". Il collegamento a un account
+-- di login è opzionale (anagrafiche.utente_id) e avviene solo quando la
+-- persona si registra.
+-- ============================================================
+
+-- 1) ANAGRAFICHE ------------------------------------------------
+create table if not exists anagrafiche (
+  id uuid primary key default gen_random_uuid(),
+  condominio_id uuid not null references condomini(id) on delete cascade,
+  nominativo text not null,
+  email text,
+  telefono text,
+  tipo text not null default 'persona' check (tipo in ('persona', 'societa')),
+  -- collegamento facoltativo a un account di login (valorizzato in futuro
+  -- quando la persona si registra e "reclama" la sua anagrafica).
+  utente_id uuid references utenti(id) on delete set null,
+  import_batch_id uuid references import_batches(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_anagrafiche_condominio on anagrafiche(condominio_id);
+create index if not exists idx_anagrafiche_utente on anagrafiche(utente_id);
+
+-- 2) UNITA_PROPRIETARI: ora può riferire un'anagrafica ----------
+-- utente_id diventa opzionale: un legame importato punta a un'anagrafica
+-- (persona senza login), non a un utente. "attivo" distingue i legami
+-- correnti da quelli storici (es. "ex proprietario") senza perdere il dato.
+alter table unita_proprietari
+  add column if not exists anagrafica_id uuid references anagrafiche(id) on delete cascade,
+  add column if not exists attivo boolean not null default true;
+
+alter table unita_proprietari alter column utente_id drop not null;
+
+-- almeno uno tra utente_id e anagrafica_id dev'essere presente
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'unita_proprietari_ref_check') then
+    alter table unita_proprietari
+      add constraint unita_proprietari_ref_check
+      check (utente_id is not null or anagrafica_id is not null);
+  end if;
+end $$;
+
+-- una stessa anagrafica compare una sola volta per unità (permette il
+-- re-import idempotente); i legami "vecchio stile" con utente_id null
+-- non collidono perché l'indice è parziale.
+create unique index if not exists uq_unita_proprietari_anagrafica
+  on unita_proprietari (unita_id, anagrafica_id) where anagrafica_id is not null;
+
+-- 3) tipo_soggetto: aggiungo 'assegnatario' ai valori ammessi ---
+alter table unita_proprietari drop constraint if exists unita_proprietari_tipo_soggetto_check;
+alter table unita_proprietari
+  add constraint unita_proprietari_tipo_soggetto_check
+  check (tipo_soggetto in ('proprietario', 'nudo_proprietario', 'usufruttuario', 'conduttore', 'comodatario', 'assegnatario'));
+
+-- 4) RLS su anagrafiche -----------------------------------------
+alter table anagrafiche enable row level security;
+
+drop policy if exists "anagrafiche_select" on anagrafiche;
+create policy "anagrafiche_select" on anagrafiche
+  for select using (admin_possiede_condominio(condominio_id) or utente_id = auth.uid());
+
+drop policy if exists "anagrafiche_write_admin" on anagrafiche;
+create policy "anagrafiche_write_admin" on anagrafiche
+  for all using (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id));
+
+-- 5) Funzione di import: condominio + unità + PERSONE -----------
+-- Riceve le righe "per persona" (una riga per occupante). Crea/riusa i
+-- condomìni (per nome+indirizzo), le unità (per identificativo, millesimi
+-- = valore valido più alto), le anagrafiche (per email o nominativo nello
+-- stesso condominio) e i legami unita_proprietari. Idempotente.
+create or replace function public.importa_condomini_unita_persone(
+  p_batch_id uuid,
+  p_righe jsonb
+)
+returns table (condomini_creati int, condomini_riusati int, unita_create int, persone_create int)
+language plpgsql
+as $$
+begin
+  if ruolo_corrente() <> 'amministratore' then
+    raise exception 'Solo un amministratore può importare condomini, unità e persone.';
+  end if;
+
+  create temporary table tmp_righe on commit drop as
+  select
+    trim(r->>'nomeCondominio') as nome_condominio,
+    trim(r->>'indirizzoCondominio') as indirizzo_condominio,
+    nullif(r->>'codiceFiscaleCondominio', '') as codice_fiscale,
+    trim(r->>'identificativo') as identificativo,
+    nullif(r->>'piano', '') as piano,
+    nullif(r->>'millesimiProprieta', '')::numeric as millesimi_proprieta,
+    nullif(trim(r->>'nominativo'), '') as nominativo,
+    nullif(trim(r->>'email'), '') as email,
+    coalesce(nullif(r->>'tipoSoggetto', ''), 'proprietario') as tipo_soggetto,
+    coalesce(nullif(r->>'quota', '')::numeric, 100) as quota,
+    coalesce((r->>'attivo')::boolean, true) as attivo
+  from jsonb_array_elements(p_righe) r;
+
+  -- chiave anagrafica (email se presente, altrimenti nominativo)
+  alter table tmp_righe add column chiave_anag text;
+  update tmp_righe set chiave_anag = coalesce(email, lower(nominativo));
+
+  -- ---- condomìni ----
+  create temporary table tmp_cond on commit drop as
+  select nome_condominio, indirizzo_condominio,
+    (array_agg(codice_fiscale) filter (where codice_fiscale is not null))[1] as codice_fiscale
+  from tmp_righe group by nome_condominio, indirizzo_condominio;
+  alter table tmp_cond add column condominio_id uuid;
+  alter table tmp_cond add column era_nuovo boolean not null default false;
+
+  update tmp_cond t set condominio_id = c.id
+  from condomini c
+  where c.nome = t.nome_condominio and c.indirizzo = t.indirizzo_condominio
+    and c.amministratore_id = auth.uid();
+
+  with nuovi as (
+    insert into condomini (id, nome, indirizzo, codice_fiscale, import_batch_id, amministratore_id)
+    select gen_random_uuid(), nome_condominio, indirizzo_condominio, codice_fiscale, p_batch_id, auth.uid()
+    from tmp_cond where condominio_id is null
+    returning id, nome, indirizzo
+  )
+  update tmp_cond t set condominio_id = n.id, era_nuovo = true
+  from nuovi n where n.nome = t.nome_condominio and n.indirizzo = t.indirizzo_condominio;
+
+  alter table tmp_righe add column condominio_id uuid;
+  update tmp_righe t set condominio_id = c.condominio_id
+  from tmp_cond c
+  where c.nome_condominio = t.nome_condominio and c.indirizzo_condominio = t.indirizzo_condominio;
+
+  -- ---- unità ----
+  create temporary table tmp_unita on commit drop as
+  select condominio_id, identificativo,
+    (array_agg(piano) filter (where piano is not null))[1] as piano,
+    max(millesimi_proprieta) as millesimi_proprieta
+  from tmp_righe where identificativo <> '' group by condominio_id, identificativo;
+
+  insert into unita (condominio_id, identificativo, piano, millesimi_proprieta, import_batch_id)
+  select condominio_id, identificativo, piano, coalesce(millesimi_proprieta, 0), p_batch_id
+  from tmp_unita
+  on conflict (condominio_id, identificativo) do update
+  set piano = excluded.piano,
+      millesimi_proprieta = excluded.millesimi_proprieta,
+      import_batch_id = excluded.import_batch_id;
+
+  -- ---- anagrafiche ----
+  create temporary table tmp_anag on commit drop as
+  select condominio_id, chiave_anag,
+    (array_agg(nominativo))[1] as nominativo,
+    (array_agg(email) filter (where email is not null))[1] as email
+  from tmp_righe where nominativo is not null
+  group by condominio_id, chiave_anag;
+  alter table tmp_anag add column anagrafica_id uuid;
+
+  -- riusa anagrafiche già esistenti (stessa email, stesso condominio)
+  update tmp_anag t set anagrafica_id = a.id
+  from anagrafiche a
+  where a.condominio_id = t.condominio_id and t.email is not null and a.email = t.email;
+
+  with nuove as (
+    insert into anagrafiche (condominio_id, nominativo, email, import_batch_id)
+    select condominio_id, nominativo, email, p_batch_id
+    from tmp_anag where anagrafica_id is null
+    returning id, condominio_id, coalesce(email, lower(nominativo)) as chiave
+  )
+  update tmp_anag t set anagrafica_id = n.id
+  from nuove n
+  where n.condominio_id = t.condominio_id and n.chiave = t.chiave_anag;
+
+  -- ---- legami unita_proprietari ----
+  -- distinct on (unità, anagrafica): la stessa persona può comparire su più
+  -- righe della stessa unità (ruoli combinati o righe duplicate); un legame
+  -- dev'essere unico. A parità, si preferisce il legame attivo.
+  insert into unita_proprietari (unita_id, anagrafica_id, quota_possesso, tipo_soggetto, attivo, utente_id)
+  select distinct on (u.id, ta.anagrafica_id)
+    u.id, ta.anagrafica_id, r.quota, r.tipo_soggetto, r.attivo, null
+  from tmp_righe r
+  join unita u on u.condominio_id = r.condominio_id and u.identificativo = r.identificativo
+  join tmp_anag ta on ta.condominio_id = r.condominio_id and ta.chiave_anag = r.chiave_anag
+  where r.nominativo is not null and r.identificativo <> ''
+  order by u.id, ta.anagrafica_id, r.attivo desc
+  on conflict (unita_id, anagrafica_id) where anagrafica_id is not null do update
+  set quota_possesso = excluded.quota_possesso,
+      tipo_soggetto = excluded.tipo_soggetto,
+      attivo = excluded.attivo;
+
+  return query select
+    (select count(*)::int from tmp_cond where era_nuovo),
+    (select count(*)::int from tmp_cond where not era_nuovo),
+    (select count(*)::int from tmp_unita),
+    (select count(*)::int from tmp_anag);
+end;
+$$;
+
+grant execute on function importa_condomini_unita_persone(uuid, jsonb) to authenticated;
+
+
+-- ============================================================
+-- Fase 4: import dei millesimi multipli
+-- La funzione di import accetta ora un terzo parametro p_millesimi:
+--   [{ nomeCondominio, indirizzoCondominio, identificativo, nomeTabella, valore }]
+-- e popola tabelle_millesimali + valori_millesimali (una tabella per tipo
+-- di millesimi presente nel file, es. Generali, Ascensore, Garage, Scala A).
+-- Idempotente. Da applicare su Supabase (SQL Editor).
+-- ============================================================
+
+drop function if exists public.importa_condomini_unita_persone(uuid, jsonb);
+
+create or replace function public.importa_condomini_unita_persone(
+  p_batch_id uuid,
+  p_righe jsonb,
+  p_millesimi jsonb default '[]'::jsonb
+)
+returns table (condomini_creati int, condomini_riusati int, unita_create int, persone_create int)
+language plpgsql
+as $$
+begin
+  if ruolo_corrente() <> 'amministratore' then
+    raise exception 'Solo un amministratore può importare condomini, unità e persone.';
+  end if;
+
+  create temporary table tmp_righe on commit drop as
+  select
+    trim(r->>'nomeCondominio') as nome_condominio,
+    trim(r->>'indirizzoCondominio') as indirizzo_condominio,
+    nullif(r->>'codiceFiscaleCondominio', '') as codice_fiscale,
+    trim(r->>'identificativo') as identificativo,
+    nullif(r->>'piano', '') as piano,
+    nullif(r->>'millesimiProprieta', '')::numeric as millesimi_proprieta,
+    nullif(trim(r->>'nominativo'), '') as nominativo,
+    nullif(trim(r->>'email'), '') as email,
+    coalesce(nullif(r->>'tipoSoggetto', ''), 'proprietario') as tipo_soggetto,
+    coalesce(nullif(r->>'quota', '')::numeric, 100) as quota,
+    coalesce((r->>'attivo')::boolean, true) as attivo
+  from jsonb_array_elements(p_righe) r;
+
+  alter table tmp_righe add column chiave_anag text;
+  update tmp_righe set chiave_anag = coalesce(email, lower(nominativo));
+
+  -- ---- condomìni ----
+  create temporary table tmp_cond on commit drop as
+  select nome_condominio, indirizzo_condominio,
+    (array_agg(codice_fiscale) filter (where codice_fiscale is not null))[1] as codice_fiscale
+  from tmp_righe group by nome_condominio, indirizzo_condominio;
+  alter table tmp_cond add column condominio_id uuid;
+  alter table tmp_cond add column era_nuovo boolean not null default false;
+
+  update tmp_cond t set condominio_id = c.id
+  from condomini c
+  where c.nome = t.nome_condominio and c.indirizzo = t.indirizzo_condominio
+    and c.amministratore_id = auth.uid();
+
+  with nuovi as (
+    insert into condomini (id, nome, indirizzo, codice_fiscale, import_batch_id, amministratore_id)
+    select gen_random_uuid(), nome_condominio, indirizzo_condominio, codice_fiscale, p_batch_id, auth.uid()
+    from tmp_cond where condominio_id is null
+    returning id, nome, indirizzo
+  )
+  update tmp_cond t set condominio_id = n.id, era_nuovo = true
+  from nuovi n where n.nome = t.nome_condominio and n.indirizzo = t.indirizzo_condominio;
+
+  alter table tmp_righe add column condominio_id uuid;
+  update tmp_righe t set condominio_id = c.condominio_id
+  from tmp_cond c
+  where c.nome_condominio = t.nome_condominio and c.indirizzo_condominio = t.indirizzo_condominio;
+
+  -- ---- unità ----
+  create temporary table tmp_unita on commit drop as
+  select condominio_id, identificativo,
+    (array_agg(piano) filter (where piano is not null))[1] as piano,
+    max(millesimi_proprieta) as millesimi_proprieta
+  from tmp_righe where identificativo <> '' group by condominio_id, identificativo;
+
+  insert into unita (condominio_id, identificativo, piano, millesimi_proprieta, import_batch_id)
+  select condominio_id, identificativo, piano, coalesce(millesimi_proprieta, 0), p_batch_id
+  from tmp_unita
+  on conflict (condominio_id, identificativo) do update
+  set piano = excluded.piano,
+      millesimi_proprieta = excluded.millesimi_proprieta,
+      import_batch_id = excluded.import_batch_id;
+
+  -- ---- anagrafiche ----
+  create temporary table tmp_anag on commit drop as
+  select condominio_id, chiave_anag,
+    (array_agg(nominativo))[1] as nominativo,
+    (array_agg(email) filter (where email is not null))[1] as email
+  from tmp_righe where nominativo is not null
+  group by condominio_id, chiave_anag;
+  alter table tmp_anag add column anagrafica_id uuid;
+
+  update tmp_anag t set anagrafica_id = a.id
+  from anagrafiche a
+  where a.condominio_id = t.condominio_id and t.email is not null and a.email = t.email;
+
+  with nuove as (
+    insert into anagrafiche (condominio_id, nominativo, email, import_batch_id)
+    select condominio_id, nominativo, email, p_batch_id
+    from tmp_anag where anagrafica_id is null
+    returning id, condominio_id, coalesce(email, lower(nominativo)) as chiave
+  )
+  update tmp_anag t set anagrafica_id = n.id
+  from nuove n
+  where n.condominio_id = t.condominio_id and n.chiave = t.chiave_anag;
+
+  -- ---- legami unita_proprietari ----
+  insert into unita_proprietari (unita_id, anagrafica_id, quota_possesso, tipo_soggetto, attivo, utente_id)
+  select distinct on (u.id, ta.anagrafica_id)
+    u.id, ta.anagrafica_id, r.quota, r.tipo_soggetto, r.attivo, null
+  from tmp_righe r
+  join unita u on u.condominio_id = r.condominio_id and u.identificativo = r.identificativo
+  join tmp_anag ta on ta.condominio_id = r.condominio_id and ta.chiave_anag = r.chiave_anag
+  where r.nominativo is not null and r.identificativo <> ''
+  order by u.id, ta.anagrafica_id, r.attivo desc
+  on conflict (unita_id, anagrafica_id) where anagrafica_id is not null do update
+  set quota_possesso = excluded.quota_possesso,
+      tipo_soggetto = excluded.tipo_soggetto,
+      attivo = excluded.attivo;
+
+  -- ---- millesimi multipli ----
+  if jsonb_array_length(coalesce(p_millesimi, '[]'::jsonb)) > 0 then
+    create temporary table tmp_mill on commit drop as
+    select
+      trim(m->>'nomeCondominio') as nome_condominio,
+      trim(m->>'indirizzoCondominio') as indirizzo_condominio,
+      trim(m->>'identificativo') as identificativo,
+      trim(m->>'nomeTabella') as nome_tabella,
+      (m->>'valore')::numeric as valore
+    from jsonb_array_elements(p_millesimi) m
+    where nullif(m->>'valore', '') is not null and nullif(trim(m->>'nomeTabella'), '') is not null;
+
+    alter table tmp_mill add column condominio_id uuid;
+    update tmp_mill t set condominio_id = c.condominio_id
+    from tmp_cond c
+    where c.nome_condominio = t.nome_condominio and c.indirizzo_condominio = t.indirizzo_condominio;
+
+    insert into tabelle_millesimali (condominio_id, nome)
+    select distinct condominio_id, nome_tabella
+    from tmp_mill where condominio_id is not null
+    on conflict (condominio_id, nome) do nothing;
+
+    insert into valori_millesimali (tabella_id, unita_id, valore)
+    select tm.id, u.id, max(t.valore)
+    from tmp_mill t
+    join tabelle_millesimali tm on tm.condominio_id = t.condominio_id and tm.nome = t.nome_tabella
+    join unita u on u.condominio_id = t.condominio_id and u.identificativo = t.identificativo
+    group by tm.id, u.id
+    on conflict (tabella_id, unita_id) do update set valore = excluded.valore;
+  end if;
+
+  return query select
+    (select count(*)::int from tmp_cond where era_nuovo),
+    (select count(*)::int from tmp_cond where not era_nuovo),
+    (select count(*)::int from tmp_unita),
+    (select count(*)::int from tmp_anag);
+end;
+$$;
+
+grant execute on function importa_condomini_unita_persone(uuid, jsonb, jsonb) to authenticated;

@@ -1,13 +1,46 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, CalendarClock, Home, Landmark, Ruler, Wallet } from "lucide-react";
+import { ArrowLeft, Building2, CalendarClock, Home, Landmark, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardHeader, CardTitle, StatCard } from "@/components/ui/card";
 import { StatoBadge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, RowIcon } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatData, formatDataOra, formatMillesimi, formatValuta } from "@/lib/format";
+import { haQuota } from "@/lib/ruoli";
 import { ContoCorrenteForm } from "../conto-corrente-form";
+import { ModificaCondominioButton } from "./modifica-condominio-button";
+import { NuovaUnitaForm } from "./nuova-unita-form";
+import { AvvisoForm } from "./avviso-form";
+
+const ETICHETTA_TIPO: Record<string, string> = {
+  proprietario: "Proprietario",
+  nudo_proprietario: "Nudo proprietario",
+  usufruttuario: "Usufruttuario",
+  conduttore: "Conduttore",
+  comodatario: "Comodatario",
+  assegnatario: "Assegnatario",
+};
+
+type OccupanteUnita = {
+  quota_possesso: number;
+  tipo_soggetto: string;
+  attivo: boolean;
+  anagrafiche: { nominativo: string } | null;
+};
+
+type UnitaConOccupanti = {
+  id: string;
+  identificativo: string;
+  millesimi_proprieta: number;
+  unita_proprietari: OccupanteUnita[] | null;
+};
+
+type RigaUnita = {
+  unita: UnitaConOccupanti;
+  occupante: OccupanteUnita | null;
+  primo: boolean;
+};
 
 export default async function CondominioDettaglioPage({
   params,
@@ -20,8 +53,20 @@ export default async function CondominioDettaglioPage({
   const { data: condominio } = await supabase.from("condomini").select("*").eq("id", id).single();
   if (!condominio) notFound();
 
-  const [{ data: unita }, { data: assemblee }, { data: spese }] = await Promise.all([
-    supabase.from("unita").select("*").eq("condominio_id", id).order("identificativo"),
+  const [
+    { data: unita },
+    { data: assemblee },
+    { data: spese },
+    { data: tabelleMillesimi },
+    { data: anagraficheEmail },
+  ] = await Promise.all([
+    supabase
+      .from("unita")
+      .select(
+        "*, unita_proprietari(quota_possesso, tipo_soggetto, attivo, anagrafiche(nominativo)), valori_millesimali(valore, tabella_id)"
+      )
+      .eq("condominio_id", id)
+      .order("identificativo"),
     supabase
       .from("assemblee")
       .select("id, data_assemblea, tipo, stato")
@@ -32,7 +77,13 @@ export default async function CondominioDettaglioPage({
       .select("*, ripartizioni(importo_dovuto, stato_pagamento)")
       .eq("condominio_id", id)
       .order("data_spesa", { ascending: false }),
+    supabase.from("tabelle_millesimali").select("id, nome").eq("condominio_id", id),
+    supabase.from("anagrafiche").select("email").eq("condominio_id", id),
   ]);
+
+  const destinatariAvvisi = new Set(
+    (anagraficheEmail ?? []).map((a) => a.email as string | null).filter((e): e is string => !!e)
+  ).size;
 
   const adesso = new Date();
   const prossimaAssemblea = (assemblee ?? [])
@@ -54,6 +105,37 @@ export default async function CondominioDettaglioPage({
     );
   }, 0);
 
+  // Una riga per (unità × occupante attivo). Le unità senza occupanti
+  // producono comunque una riga (nominativo "—"). L'identificativo e i
+  // millesimi si mostrano solo sulla prima riga di ciascuna unità.
+  const righeUnita = (unita ?? []).flatMap((u): RigaUnita[] => {
+    const occupanti = ((u.unita_proprietari ?? []) as OccupanteUnita[]).filter(
+      (o) => o.attivo && o.anagrafiche
+    );
+    if (occupanti.length === 0) return [{ unita: u, occupante: null, primo: true }];
+    return occupanti.map((o, i) => ({ unita: u, occupante: o, primo: i === 0 }));
+  });
+
+  // Colonne millesimi dinamiche: una per tabella millesimale con almeno un
+  // valore (le tabelle vuote non compaiono). Ordine: "Generali" per prima.
+  const valoriPerUnita = new Map<string, Map<string, number>>();
+  for (const u of unita ?? []) {
+    const m = new Map<string, number>();
+    for (const v of (u.valori_millesimali ?? []) as { valore: number; tabella_id: string }[]) {
+      if (v.valore != null) m.set(v.tabella_id, v.valore);
+    }
+    valoriPerUnita.set(u.id, m);
+  }
+  const tabelle = (tabelleMillesimi ?? []) as { id: string; nome: string }[];
+  const colonneMill = tabelle
+    .filter((t) => [...valoriPerUnita.values()].some((m) => m.has(t.id)))
+    .sort((a, b) =>
+      a.nome === "Generali" ? -1 : b.nome === "Generali" ? 1 : a.nome.localeCompare(b.nome)
+    );
+  // Se non ci sono ancora tabelle importate, si mostra il singolo millesimo
+  // "generale" dell'unità (comportamento precedente).
+  const mostraFallbackMill = colonneMill.length === 0;
+
   return (
     <div className="flex flex-col gap-8">
       <Link
@@ -74,12 +156,12 @@ export default async function CondominioDettaglioPage({
               {condominio.codice_fiscale ? ` · ${condominio.codice_fiscale}` : ""}
             </p>
           </div>
-          <Link
-            href={`/admin/condomini/${condominio.id}/millesimi`}
-            className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
-          >
-            <Ruler className="size-4" /> Tabelle millesimali
-          </Link>
+          <ModificaCondominioButton
+            id={condominio.id}
+            nome={condominio.nome}
+            indirizzo={condominio.indirizzo}
+            codiceFiscale={condominio.codice_fiscale ?? null}
+          />
         </div>
       </Card>
 
@@ -93,6 +175,13 @@ export default async function CondominioDettaglioPage({
         <StatCard label="Spese anno corrente" value={formatValuta(totaleSpeseAnno)} icon={Wallet} />
         <StatCard label="Da incassare" value={formatValuta(totaleNonIncassato)} icon={Landmark} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Avvisi ai condòmini</CardTitle>
+        </CardHeader>
+        <AvvisoForm condominioId={condominio.id} destinatari={destinatariAvvisi} />
+      </Card>
 
       <div className="grid lg:grid-cols-2 gap-8 items-start">
         <Card>
@@ -178,28 +267,70 @@ export default async function CondominioDettaglioPage({
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle>Nuova unità</CardTitle>
+        </CardHeader>
+        <NuovaUnitaForm condominioId={condominio.id} tabelle={colonneMill} />
+      </Card>
+
+      <Card>
         <div className="flex items-center justify-between mb-4">
-          <CardTitle>Unità</CardTitle>
+          <CardTitle>Unità e occupanti</CardTitle>
         </div>
         {unita?.length ? (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Identificativo</TableHead>
-                <TableHead>Piano</TableHead>
-                <TableHead>Millesimi</TableHead>
+                <TableHead>Unità</TableHead>
+                <TableHead>Nominativo</TableHead>
+                <TableHead>Qualifica</TableHead>
+                <TableHead>Quota</TableHead>
+                {mostraFallbackMill ? (
+                  <TableHead>Millesimi</TableHead>
+                ) : (
+                  colonneMill.map((t) => (
+                    <TableHead key={t.id}>Millesimi {t.nome}</TableHead>
+                  ))
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {unita.map((u) => (
-                <TableRow key={u.id}>
+              {righeUnita.map((r, i) => (
+                <TableRow key={`${r.unita.id}-${i}`}>
                   <TableCell className="font-medium">
-                    <Link href={`/admin/unita/${u.id}`} className="hover:text-accent">
-                      <RowIcon icon={Home}>{u.identificativo}</RowIcon>
-                    </Link>
+                    {r.primo && (
+                      <Link href={`/admin/unita/${r.unita.id}`} className="hover:text-accent">
+                        <RowIcon icon={Home}>{r.unita.identificativo}</RowIcon>
+                      </Link>
+                    )}
                   </TableCell>
-                  <TableCell>{u.piano ?? "-"}</TableCell>
-                  <TableCell>{formatMillesimi(u.millesimi_proprieta)}</TableCell>
+                  <TableCell>{r.occupante?.anagrafiche?.nominativo ?? "—"}</TableCell>
+                  <TableCell>
+                    {r.occupante
+                      ? ETICHETTA_TIPO[r.occupante.tipo_soggetto] ?? r.occupante.tipo_soggetto
+                      : "—"}
+                  </TableCell>
+                  <TableCell>
+                    {r.occupante &&
+                    haQuota(r.occupante.tipo_soggetto) &&
+                    r.occupante.quota_possesso !== 100
+                      ? `${r.occupante.quota_possesso}%`
+                      : "—"}
+                  </TableCell>
+                  {mostraFallbackMill ? (
+                    <TableCell>
+                      {r.primo ? formatMillesimi(r.unita.millesimi_proprieta) : ""}
+                    </TableCell>
+                  ) : (
+                    colonneMill.map((t) => {
+                      const v = valoriPerUnita.get(r.unita.id)?.get(t.id);
+                      return (
+                        <TableCell key={t.id}>
+                          {r.primo ? (v != null ? formatMillesimi(v) : "—") : ""}
+                        </TableCell>
+                      );
+                    })
+                  )}
                 </TableRow>
               ))}
             </TableBody>

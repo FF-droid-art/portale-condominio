@@ -73,6 +73,37 @@ export const CAMPI_CONDOMINI_UNITA: CampoImport[] = [
     tipo: "numero",
     sinonimi: ["millesimi", "mill", "quota"],
   },
+  // --- Persona legata all'unità (Fase 3, opzionali) ---
+  {
+    chiave: "nominativo",
+    etichetta: "Nominativo",
+    obbligatorio: false,
+    tipo: "testo",
+    sinonimi: ["nominativo", "intestatario", "denominazione", "nome e cognome"],
+  },
+  {
+    chiave: "email",
+    etichetta: "Email",
+    obbligatorio: false,
+    tipo: "testo",
+    sinonimi: ["email", "e mail", "posta elettronica", "mail"],
+  },
+  {
+    chiave: "qualifica",
+    etichetta: "Qualifica / titolo",
+    obbligatorio: false,
+    tipo: "testo",
+    // "titolo" (non "qualifica" nudo) per non catturare la colonna
+    // "Qualifica unità immobiliare", che descrive il tipo di unità.
+    sinonimi: ["titolo del nominativo", "qualifica titolo", "titolo qualifica", "titolo"],
+  },
+  {
+    chiave: "quota",
+    etichetta: "Quota di titolarità",
+    obbligatorio: false,
+    tipo: "numero",
+    sinonimi: ["quota di titolarita", "quota titolarita", "quota possesso"],
+  },
 ];
 
 export const CAMPI_SPESE: CampoImport[] = [

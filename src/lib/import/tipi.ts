@@ -41,6 +41,23 @@ export type RigaImportCondominioUnita = {
   identificativo: string;
   piano: string | null;
   millesimiProprieta: number;
+  // Dati della persona legata all'unità (Fase 3). Opzionali: un file può
+  // contenere solo condomìni e unità. Una riga = un occupante dell'unità.
+  nominativo: string | null;
+  email: string | null;
+  qualifica: string | null; // testo grezzo dal file (es. "Ex proprietario")
+  quota: number; // quota di titolarità %, NaN se non indicata
+};
+
+// Un valore di millesimi per (unità, tipo di tabella). Il file può avere più
+// colonne di millesimi (Generali, Ascensore, Garage, Scala...): ognuna diventa
+// una tabella millesimale.
+export type RigaMillesimo = {
+  nomeCondominio: string;
+  indirizzoCondominio: string;
+  identificativo: string;
+  nomeTabella: string;
+  valore: number;
 };
 
 export type RigaImportSpesa = {

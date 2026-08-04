@@ -20,10 +20,18 @@ export function validaRigaCondominioUnita(riga: RigaImportCondominioUnita): stri
   if (!riga.nomeCondominio.trim()) return "Nome condominio mancante.";
   if (!riga.indirizzoCondominio.trim()) return "Indirizzo condominio mancante.";
   if (!riga.identificativo.trim()) return "Identificativo unità mancante.";
-  if (riga.millesimiProprieta === null || Number.isNaN(riga.millesimiProprieta)) {
-    return "Millesimi di proprietà mancanti o non numerici.";
+  // I millesimi appartengono all'unità, non a ogni occupante: una riga
+  // inquilino può non averli. Se assenti l'unità parte da 0 (li rifinisce
+  // la Fase 4). Si segnala solo un valore negativo, che è un errore vero.
+  if (!Number.isNaN(riga.millesimiProprieta) && riga.millesimiProprieta < 0) {
+    return "Millesimi di proprietà negativi.";
   }
-  if (riga.millesimiProprieta < 0) return "Millesimi di proprietà negativi.";
+  // Persona (se presente): la quota, se indicata, dev'essere tra 1 e 100.
+  if (riga.nominativo && riga.nominativo.trim() && !Number.isNaN(riga.quota)) {
+    if (riga.quota <= 0 || riga.quota > 100) {
+      return "Quota di titolarità fuori intervallo (1-100).";
+    }
+  }
   return null;
 }
 
