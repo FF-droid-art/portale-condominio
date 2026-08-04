@@ -1643,6 +1643,7 @@ begin
   end if;
 
   create temporary table tmp_righe on commit drop as
+  select s.*, coalesce(s.email, lower(s.nominativo)) as chiave_anag from (
   select
     trim(r->>'nomeCondominio') as nome_condominio,
     trim(r->>'indirizzoCondominio') as indirizzo_condominio,
@@ -1655,11 +1656,8 @@ begin
     coalesce(nullif(r->>'tipoSoggetto', ''), 'proprietario') as tipo_soggetto,
     coalesce(nullif(r->>'quota', '')::numeric, 100) as quota,
     coalesce((r->>'attivo')::boolean, true) as attivo
-  from jsonb_array_elements(p_righe) r;
-
-  -- chiave anagrafica (email se presente, altrimenti nominativo)
-  alter table tmp_righe add column chiave_anag text;
-  update tmp_righe set chiave_anag = coalesce(email, lower(nominativo));
+  from jsonb_array_elements(p_righe) r
+  ) s;
 
   -- ---- condomìni ----
   create temporary table tmp_cond on commit drop as
@@ -1780,6 +1778,7 @@ begin
   end if;
 
   create temporary table tmp_righe on commit drop as
+  select s.*, coalesce(s.email, lower(s.nominativo)) as chiave_anag from (
   select
     trim(r->>'nomeCondominio') as nome_condominio,
     trim(r->>'indirizzoCondominio') as indirizzo_condominio,
@@ -1792,10 +1791,8 @@ begin
     coalesce(nullif(r->>'tipoSoggetto', ''), 'proprietario') as tipo_soggetto,
     coalesce(nullif(r->>'quota', '')::numeric, 100) as quota,
     coalesce((r->>'attivo')::boolean, true) as attivo
-  from jsonb_array_elements(p_righe) r;
-
-  alter table tmp_righe add column chiave_anag text;
-  update tmp_righe set chiave_anag = coalesce(email, lower(nominativo));
+  from jsonb_array_elements(p_righe) r
+  ) s;
 
   -- ---- condomìni ----
   create temporary table tmp_cond on commit drop as
