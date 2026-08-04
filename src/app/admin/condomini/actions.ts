@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { resend, MITTENTE_EMAIL } from "@/lib/resend";
 
@@ -146,33 +147,40 @@ export async function aggiornaCondominio(input: {
   return { ok: true };
 }
 
-export async function aggiornaContoCorrente(
-  _stato: StatoForm,
-  formData: FormData
-): Promise<StatoForm> {
-  const condominioId = String(formData.get("condominio_id") ?? "");
-  const iban = String(formData.get("iban") ?? "").trim();
-  const banca = String(formData.get("banca") ?? "").trim();
-  const intestatarioConto = String(formData.get("intestatario_conto") ?? "").trim();
-
-  if (!condominioId) {
-    return { errore: "Condominio non valido." };
-  }
+export async function aggiornaContoCorrente(input: {
+  condominioId: string;
+  iban: string;
+  banca: string;
+  intestatarioConto: string;
+}): Promise<{ ok: true } | { errore: string }> {
+  if (!input.condominioId) return { errore: "Condominio non valido." };
 
   const supabase = await createClient();
   const { error } = await supabase
     .from("condomini")
     .update({
-      iban: iban || null,
-      banca: banca || null,
-      intestatario_conto: intestatarioConto || null,
+      iban: input.iban.trim() || null,
+      banca: input.banca.trim() || null,
+      intestatario_conto: input.intestatarioConto.trim() || null,
     })
-    .eq("id", condominioId);
+    .eq("id", input.condominioId);
 
   if (error) return { errore: error.message };
 
   revalidatePath("/admin/condomini");
-  revalidatePath(`/admin/condomini/${condominioId}`);
+  revalidatePath(`/admin/condomini/${input.condominioId}`);
+  return { ok: true };
+}
+
+// Elimina il condominio (a cascata: unità, anagrafiche, millesimi, legami…) e
+// riporta alla lista. La RLS consente l'operazione solo all'admin proprietario.
+export async function eliminaCondominio(id: string): Promise<{ errore: string } | void> {
+  if (!id) return { errore: "Condominio non valido." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("condomini").delete().eq("id", id);
+  if (error) return { errore: error.message };
+  revalidatePath("/admin/condomini");
+  redirect("/admin/condomini");
 }
 
 // Legge un valore di millesimi dal form: vuoto -> null, altrimenti numero.

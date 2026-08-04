@@ -10,6 +10,8 @@ import { formatData, formatDataOra, formatMillesimi, formatValuta } from "@/lib/
 import { haQuota } from "@/lib/ruoli";
 import { ContoCorrenteForm } from "../conto-corrente-form";
 import { ModificaCondominioButton } from "./modifica-condominio-button";
+import { TrasferisciCondominioButton } from "./trasferisci-condominio-button";
+import { EliminaCondominioButton } from "./elimina-condominio-button";
 import { NuovaUnitaForm } from "./nuova-unita-form";
 import { AvvisoForm } from "./avviso-form";
 
@@ -156,12 +158,16 @@ export default async function CondominioDettaglioPage({
               {condominio.codice_fiscale ? ` · ${condominio.codice_fiscale}` : ""}
             </p>
           </div>
-          <ModificaCondominioButton
-            id={condominio.id}
-            nome={condominio.nome}
-            indirizzo={condominio.indirizzo}
-            codiceFiscale={condominio.codice_fiscale ?? null}
-          />
+          <div className="flex items-center gap-4">
+            <ModificaCondominioButton
+              id={condominio.id}
+              nome={condominio.nome}
+              indirizzo={condominio.indirizzo}
+              codiceFiscale={condominio.codice_fiscale ?? null}
+            />
+            <TrasferisciCondominioButton />
+            <EliminaCondominioButton id={condominio.id} nome={condominio.nome} />
+          </div>
         </div>
       </Card>
 
