@@ -28,7 +28,13 @@ function costruisciMillesimi(
   foglio: FoglioAnalizzato,
   mappatura: Record<string, number | null>
 ): RigaMillesimo[] {
-  const cols = colonneMillesimi(foglio.intestazioni);
+  // Esclude la colonna già mappata su millesimiProprieta: altrimenti
+  // finirebbe due volte, come unita.millesimi_proprieta E come tabella
+  // millesimale "Generali", duplicando lo stesso dato (vedi commento nello
+  // schema: "Generale" è implicito in unita.millesimi_proprieta).
+  const cols = colonneMillesimi(foglio.intestazioni).filter(
+    (c) => c.indice !== mappatura.millesimiProprieta
+  );
   const iId = mappatura.identificativo;
   const iInd = mappatura.indirizzoCondominio;
   const iNome = mappatura.nomeCondominio;
@@ -59,6 +65,14 @@ const INDICE_FASE: Record<Fase, 0 | 1 | 2 | 3> = { carica: 0, mappa: 1, verifica
 
 const CAMPI_OBBLIGATORI = CAMPI_CONDOMINI_UNITA.filter((c) => c.obbligatorio).map((c) => c.chiave);
 
+// Alcuni gestionali esportano la quota di comproprietà come frazione
+// (0-1, es. 1/3 = 0.333...) invece che come percentuale (0-100), che è
+// invece ciò che il DB si aspetta (quota_possesso, 0-100). Se il valore è
+// nell'intervallo (0, 1] lo trattiamo come frazione e lo convertiamo.
+function normalizzaQuotaPercentuale(valore: number): number {
+  return valore > 0 && valore <= 1 ? valore * 100 : valore;
+}
+
 function convertiRighe(dizionari: RigaGrezzaCostruita[]): RigaImportCondominioUnita[] {
   return dizionari.map((d) => ({
     nomeCondominio: typeof d.nomeCondominio === "string" ? d.nomeCondominio : "",
@@ -70,7 +84,7 @@ function convertiRighe(dizionari: RigaGrezzaCostruita[]): RigaImportCondominioUn
     nominativo: (d.nominativo as string | null) ?? null,
     email: (d.email as string | null) ?? null,
     qualifica: (d.qualifica as string | null) ?? null,
-    quota: typeof d.quota === "number" ? d.quota : NaN,
+    quota: typeof d.quota === "number" ? normalizzaQuotaPercentuale(d.quota) : NaN,
   }));
 }
 
