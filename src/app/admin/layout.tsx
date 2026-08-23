@@ -6,8 +6,8 @@ const LINK_ADMIN = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/condomini", label: "Condomini" },
   { href: "/admin/spese", label: "Spese" },
-  { href: "/admin/importa", label: "Importa dati" },
   { href: "/admin/assemblee", label: "Assemblee" },
+  { href: "/admin/importa", label: "Importa dati" },
   { href: "/admin/utenti", label: "Utenti" },
 ];
 
