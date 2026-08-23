@@ -14,11 +14,11 @@ import {
   RowIcon,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatMillesimi } from "@/lib/format";
 import { haQuota } from "@/lib/ruoli";
 import { ProprietarioForm } from "./proprietario-form";
 import { RimuoviProprietarioButton } from "./rimuovi-proprietario-button";
 import { ModificaContattiButton } from "./modifica-contatti-button";
+import { ModificaMillesimiButton } from "./modifica-millesimi-button";
 
 export default async function UnitaDettaglioPage({
   params,
@@ -66,7 +66,15 @@ export default async function UnitaDettaglioPage({
           </div>
           <div className="flex flex-col items-end gap-1 text-sm text-muted-foreground">
             <p>Piano: {unita.piano ?? "-"}</p>
-            <p>Millesimi: {formatMillesimi(unita.millesimi_proprieta)}</p>
+            <p className="flex items-center gap-1">
+              Millesimi:
+              <ModificaMillesimiButton
+                unitaId={unita.id}
+                condominioId={unita.condominio_id}
+                identificativo={unita.identificativo}
+                millesimi={unita.millesimi_proprieta}
+              />
+            </p>
           </div>
         </div>
       </Card>

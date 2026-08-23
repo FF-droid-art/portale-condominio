@@ -150,6 +150,28 @@ export async function aggiornaContatti(input: {
   return { ok: true };
 }
 
+export async function aggiornaMillesimi(input: {
+  unitaId: string;
+  condominioId: string;
+  millesimi: number;
+}): Promise<{ ok: true } | { errore: string }> {
+  if (!input.unitaId) return { errore: "Unità non valida." };
+  if (!Number.isFinite(input.millesimi) || input.millesimi < 0) {
+    return { errore: "Millesimi non validi." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("unita")
+    .update({ millesimi_proprieta: input.millesimi })
+    .eq("id", input.unitaId);
+  if (error) return { errore: error.message };
+
+  revalidatePath(`/admin/unita/${input.unitaId}`);
+  if (input.condominioId) revalidatePath(`/admin/condomini/${input.condominioId}`);
+  return { ok: true };
+}
+
 export async function rimuoviProprietario(
   id: string,
   unitaId: string
