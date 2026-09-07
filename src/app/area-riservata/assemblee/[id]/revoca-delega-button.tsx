@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { RotateCcw } from "lucide-react";
 import { revocaDelega } from "./actions";
 import { Button } from "@/components/ui/button";
+import { FormError } from "@/components/ui/alert";
 
 export function RevocaDelegaButton({
   delegaId,
   assembleaId,
+  unitaLabel,
 }: {
   delegaId: string;
   assembleaId: string;
+  unitaLabel?: string;
 }) {
   const [errore, setErrore] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -21,6 +25,7 @@ export function RevocaDelegaButton({
         variant="secondary"
         size="sm"
         pending={pending}
+        aria-label={unitaLabel ? `Revoca la delega di ${unitaLabel}` : undefined}
         onClick={() =>
           startTransition(async () => {
             const risultato = await revocaDelega(delegaId, assembleaId);
@@ -28,9 +33,10 @@ export function RevocaDelegaButton({
           })
         }
       >
-        Revoca delega
+        <RotateCcw className="size-4" aria-hidden="true" />
+        Revoca
       </Button>
-      {errore && <p className="text-xs text-danger">{errore}</p>}
+      <FormError piccolo>{errore}</FormError>
     </div>
   );
 }

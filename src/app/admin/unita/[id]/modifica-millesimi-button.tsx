@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 import { aggiornaMillesimi } from "./actions";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Label } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
+import { Field, Input } from "@/components/ui/input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { formatMillesimi } from "@/lib/format";
 
@@ -48,48 +49,58 @@ export function ModificaMillesimiButton({
       <button
         type="button"
         onClick={apri}
-        title="Modifica millesimi"
-        className="inline-flex items-center gap-1 text-muted-foreground hover:text-accent"
+        aria-label={`Modifica i millesimi di ${identificativo}`}
+        title="Modifica i millesimi"
+        className="group inline-flex items-center gap-1.5 rounded-md text-left transition-colors hover:text-accent-ink"
       >
-        {formatMillesimi(millesimi)}
-        <Pencil className="size-3.5" />
+        <span className="cifre font-semibold">{formatMillesimi(millesimi)}</span>
+        <Pencil
+          className="size-3.5 text-muted-foreground transition-colors group-hover:text-accent-ink"
+          aria-hidden="true"
+        />
       </button>
 
-      {aperto && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => !pending && setAperto(false)}
+      <Dialog
+        aperto={aperto}
+        onChiudi={() => setAperto(false)}
+        bloccato={pending}
+        titolo={`Millesimi di ${identificativo}`}
+        descrizione="I millesimi generali su cui vengono calcolate le quote di spesa e il peso del voto in assemblea."
+        footer={
+          <>
+            <Button variant="ghost" disabled={pending} onClick={() => setAperto(false)}>
+              Annulla
+            </Button>
+            <Button pending={pending} onClick={salva}>
+              Salva
+            </Button>
+          </>
+        }
+      >
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            salva();
+          }}
         >
-          <Card className="w-full max-w-sm gap-4" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold">Millesimi di {identificativo}</p>
-            <Field>
-              <Label htmlFor="millesimi_valore">Millesimi di proprietà</Label>
-              <Input
-                id="millesimi_valore"
-                type="number"
-                min={0}
-                step="0.001"
-                value={valore}
-                onChange={(e) => setValore(e.target.value)}
-              />
-            </Field>
-            {errore && <p className="text-sm text-danger">{errore}</p>}
-            <div className="flex gap-3">
-              <Button type="button" pending={pending} onClick={salva}>
-                Salva
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={pending}
-                onClick={() => setAperto(false)}
-              >
-                Annulla
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+          <Field id="millesimi_valore" label="Millesimi di proprietà">
+            <Input
+              type="number"
+              min={0}
+              step="0.001"
+              inputMode="decimal"
+              value={valore}
+              onChange={(e) => setValore(e.target.value)}
+              className="cifre"
+            />
+          </Field>
+          <FormError>{errore}</FormError>
+          <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
+            Salva
+          </button>
+        </form>
+      </Dialog>
     </>
   );
 }

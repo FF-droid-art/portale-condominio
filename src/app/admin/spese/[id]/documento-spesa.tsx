@@ -3,7 +3,8 @@
 import { useActionState } from "react";
 import { FileText, Upload } from "lucide-react";
 import { caricaDocumentoSpesa } from "./actions";
-import { Field, Input, Label } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export function DocumentoSpesa({
@@ -18,35 +19,45 @@ export function DocumentoSpesa({
   const [stato, action, pending] = useActionState(caricaDocumentoSpesa, undefined);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {documentoUrl && signedUrl && (
-        <Button
-          href={signedUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="secondary"
-          className="w-fit"
-          size="sm"
-        >
-          <FileText className="size-4" />
-          Scarica fattura
-        </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/50 px-4 py-3">
+          <span className="flex min-w-0 items-center gap-2.5 text-sm">
+            <span
+              className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"
+              aria-hidden="true"
+            >
+              <FileText className="size-4" />
+            </span>
+            <span className="font-medium">Fattura caricata</span>
+          </span>
+          <Button
+            href={signedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            size="sm"
+          >
+            Apri il documento
+          </Button>
+        </div>
       )}
 
-      <form action={action} className="flex items-end gap-2">
+      <form action={action} className="flex flex-col gap-3">
         <input type="hidden" name="spesa_id" value={spesaId} />
-        <Field className="flex-1">
-          <Label htmlFor="documento">
-            {documentoUrl ? "Sostituisci fattura" : "Carica fattura (PDF o immagine, max 4MB)"}
-          </Label>
-          <Input id="documento" name="documento" type="file" accept="application/pdf,image/*" required />
+        <Field
+          id="documento"
+          label={documentoUrl ? "Sostituisci la fattura" : "Carica la fattura"}
+          hint="PDF o immagine, fino a 4 MB."
+        >
+          <Input name="documento" type="file" accept="application/pdf,image/*" required />
         </Field>
-        <Button type="submit" variant="secondary" pending={pending}>
-          <Upload className="size-4" />
-          Carica
+        <FormError>{stato?.errore}</FormError>
+        <Button type="submit" variant="secondary" pending={pending} className="w-fit">
+          <Upload className="size-4" aria-hidden="true" />
+          {pending ? "Caricamento…" : "Carica"}
         </Button>
       </form>
-      {stato?.errore && <p className="text-sm text-danger">{stato.errore}</p>}
     </div>
   );
 }

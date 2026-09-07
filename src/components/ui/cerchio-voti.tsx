@@ -10,6 +10,11 @@ type Tally = { favorevole: number; contrario: number; astenuto: number };
  * Cerchio che rappresenta i millesimi di proprietà: gli spicchi si colorano
  * di verde/rosso/grigio man mano che arrivano i voti, aggiornandosi da soli
  * via Supabase Realtime (nessun refresh pagina necessario).
+ *
+ * La legenda ripete ogni valore in millesimi accanto al colore: il grafico
+ * dà il colpo d'occhio, i numeri restano leggibili anche a chi non
+ * distingue le tinte o usa uno screen reader (l'immagine ha una
+ * descrizione testuale completa).
  */
 export function CerchioVotiLive({
   puntoId,
@@ -59,6 +64,12 @@ export function CerchioVotiLive({
 
   const gradient = `conic-gradient(var(--success) 0% ${finoFavorevole}%, var(--danger) ${finoFavorevole}% ${finoContrario}%, var(--muted-foreground) ${finoContrario}% ${finoAstenuto}%, var(--surface-muted) ${finoAstenuto}% 100%)`;
 
+  const voci = [
+    { etichetta: "Favorevole", valore: tally.favorevole, colore: "bg-success" },
+    { etichetta: "Contrario", valore: tally.contrario, colore: "bg-danger" },
+    { etichetta: "Astenuto", valore: tally.astenuto, colore: "bg-muted-foreground" },
+  ];
+
   return (
     <div className="flex items-center gap-4">
       <div
@@ -69,27 +80,25 @@ export function CerchioVotiLive({
           tally.contrario
         )}, astenuto ${formatMillesimi(tally.astenuto)} su ${formatMillesimi(millesimiTotali)} millesimi`}
       >
-        <div className="absolute inset-[16%] flex flex-col items-center justify-center rounded-full bg-surface">
-          <span className="text-base font-semibold leading-none">
+        <div className="absolute inset-[15%] flex flex-col items-center justify-center rounded-full bg-surface">
+          <span className="cifre text-lg font-semibold leading-none tracking-tight">
             {votantiPercentuale.toFixed(0)}%
           </span>
-          <span className="mt-1 text-[10px] text-muted-foreground">votanti</span>
+          <span className="mt-1 text-[0.625rem] font-medium uppercase tracking-wide text-muted-foreground">
+            votanti
+          </span>
         </div>
       </div>
-      <div className="flex flex-col gap-1.5 text-xs">
-        <span className="flex items-center gap-1.5">
-          <span className="size-2.5 shrink-0 rounded-full bg-success" />
-          Favorevole {formatMillesimi(tally.favorevole)}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-2.5 shrink-0 rounded-full bg-danger" />
-          Contrario {formatMillesimi(tally.contrario)}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-2.5 shrink-0 rounded-full bg-muted-foreground" />
-          Astenuto {formatMillesimi(tally.astenuto)}
-        </span>
-      </div>
+
+      <dl className="flex min-w-0 flex-col gap-2 text-xs">
+        {voci.map((voce) => (
+          <div key={voce.etichetta} className="flex items-center gap-2">
+            <span className={`size-2.5 shrink-0 rounded-full ${voce.colore}`} aria-hidden="true" />
+            <dt className="text-muted-foreground">{voce.etichetta}</dt>
+            <dd className="cifre font-semibold">{formatMillesimi(voce.valore)}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

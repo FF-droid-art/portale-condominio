@@ -1,10 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { GuscioWizard, AzioniPasso, PannelloEsito } from "@/components/import/guscio-wizard";
 import { Button } from "@/components/ui/button";
-import { IndicatoreFasi } from "@/components/import/indicatore-fasi";
 import { PassoCaricaFile } from "@/components/import/passo-carica-file";
 import { PassoMappatura } from "@/components/import/passo-mappatura";
 import { TabellaAnteprima } from "@/components/import/tabella-anteprima";
@@ -17,6 +15,24 @@ import { importaUnita, type EsitoImportUnita } from "./actions";
 
 type Fase = "carica" | "mappa" | "verifica" | "esito";
 const INDICE_FASE: Record<Fase, 0 | 1 | 2 | 3> = { carica: 0, mappa: 1, verifica: 2, esito: 3 };
+
+const TITOLI: Record<Fase, { titolo: string; descrizione?: string }> = {
+  carica: {
+    titolo: "Scegli il condominio e carica il file",
+    descrizione:
+      "Un file .xlsx o .csv con l'elenco delle unità: una riga per unità, con identificativo, piano e millesimi.",
+  },
+  mappa: {
+    titolo: "Abbina le colonne",
+    descrizione: "Dì al portale quale colonna del tuo file corrisponde a quale campo.",
+  },
+  verifica: {
+    titolo: "Controlla le righe",
+    descrizione:
+      "Niente è ancora stato scritto. Se qualche riga ha un errore, correggi il file e ricaricalo.",
+  },
+  esito: { titolo: "Esito dell'importazione" },
+};
 
 const CAMPI_OBBLIGATORI = CAMPI_UNITA.filter((c) => c.obbligatorio).map((c) => c.chiave);
 
@@ -67,9 +83,11 @@ export function ImportUnitaWizard({
   }
 
   return (
-    <Card className="flex flex-col gap-6">
-      <IndicatoreFasi fase={INDICE_FASE[fase]} />
-
+    <GuscioWizard
+      fase={INDICE_FASE[fase]}
+      titoloPasso={TITOLI[fase].titolo}
+      descrizionePasso={TITOLI[fase].descrizione}
+    >
       {fase === "carica" && (
         <PassoCaricaFile
           condomini={condomini}
@@ -85,7 +103,7 @@ export function ImportUnitaWizard({
       )}
 
       {fase === "mappa" && foglio && (
-        <div className="flex flex-col gap-4">
+        <>
           <PassoMappatura
             campi={CAMPI_UNITA}
             intestazioni={foglio.intestazioni}
@@ -93,19 +111,23 @@ export function ImportUnitaWizard({
             mappatura={mappatura}
             onChange={setMappatura}
           />
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setFase("carica")}>
-              Indietro
-            </Button>
-            <Button disabled={!mappaturaCompleta} onClick={() => setFase("verifica")}>
-              Continua
-            </Button>
-          </div>
-        </div>
+          <AzioniPasso
+            indietro={
+              <Button variant="ghost" onClick={() => setFase("carica")}>
+                Indietro
+              </Button>
+            }
+            avanti={
+              <Button disabled={!mappaturaCompleta} onClick={() => setFase("verifica")}>
+                Continua
+              </Button>
+            }
+          />
+        </>
       )}
 
       {fase === "verifica" && (
-        <div className="flex flex-col gap-4">
+        <>
           <TabellaAnteprima
             colonne={[
               { chiave: "identificativo", etichetta: "Identificativo" },
@@ -115,42 +137,45 @@ export function ImportUnitaWizard({
             righe={righe}
             erroriPerRiga={erroriPerRiga}
           />
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setFase("mappa")}>
-              Indietro
-            </Button>
-            <Button disabled={haErrori || pending} pending={pending} onClick={confermaImportazione}>
-              Conferma importazione
-            </Button>
-          </div>
-        </div>
+          <AzioniPasso
+            indietro={
+              <Button variant="ghost" onClick={() => setFase("mappa")}>
+                Indietro
+              </Button>
+            }
+            avanti={
+              <Button disabled={haErrori || pending} pending={pending} onClick={confermaImportazione}>
+                Conferma importazione
+              </Button>
+            }
+          />
+        </>
       )}
 
       {fase === "esito" && esito && (
-        <div className="flex flex-col gap-4">
-          {esito.ok ? (
-            <div className="flex items-center gap-2 text-success">
-              <CheckCircle2 className="size-5" />
-              <p>{esito.righeScritte} unità importate con successo.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2 text-danger text-sm">
-              {esito.erroreGenerale && <p>{esito.erroreGenerale}</p>}
-              {esito.erroriRiga?.map((e) => (
-                <p key={e.indice}>
-                  Riga {e.indice + 1}: {e.messaggio}
-                </p>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-3">
-            {esito.ok && <Button href="/admin/condomini">Vai alle unità</Button>}
-            <Button variant="secondary" onClick={riparti}>
-              Importa un altro file
-            </Button>
-          </div>
-        </div>
+        <PannelloEsito
+          ok={esito.ok}
+          titolo={esito.ok ? "Importazione completata" : "Importazione non riuscita"}
+          dettaglio={
+            esito.ok ? (
+              <>
+                <strong>{esito.righeScritte}</strong>{" "}
+                {esito.righeScritte === 1 ? "unità importata" : "unità importate"}.
+              </>
+            ) : undefined
+          }
+          erroreGenerale={esito.ok ? undefined : esito.erroreGenerale}
+          erroriRiga={esito.ok ? undefined : esito.erroriRiga}
+          azioni={
+            <>
+              {esito.ok && <Button href="/admin/condomini">Vai ai condomìni</Button>}
+              <Button variant="secondary" onClick={riparti}>
+                Importa un altro file
+              </Button>
+            </>
+          }
+        />
       )}
-    </Card>
+    </GuscioWizard>
   );
 }

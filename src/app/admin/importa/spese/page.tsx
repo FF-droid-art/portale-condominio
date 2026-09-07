@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
 import { ImportSpeseWizard } from "./wizard";
+
+export const metadata = { title: "Importa spese storiche" };
 
 export default async function ImportaSpesePage() {
   const supabase = await createClient();
@@ -9,16 +12,13 @@ export default async function ImportaSpesePage() {
     .order("nome");
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Importa spese storiche</h1>
-        <p className="text-muted-foreground mt-1">
-          Carica un file .xlsx o .csv con una riga per ogni quota di unità su
-          una spesa. Le unità devono già esistere nel condominio scelto.
-        </p>
-      </div>
-
+    <PageBody>
+      <PageHeader
+        indietro={{ href: "/admin/importa", label: "Importa dati" }}
+        titolo="Importa spese storiche"
+        descrizione="Per le spese degli anni passati, già ripartite fra le unità: una riga per ogni quota. Le unità citate nel file devono esistere già nel condominio scelto."
+      />
       <ImportSpeseWizard condomini={condomini ?? []} />
-    </div>
+    </PageBody>
   );
 }

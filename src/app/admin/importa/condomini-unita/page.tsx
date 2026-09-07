@@ -1,19 +1,17 @@
+import { PageBody, PageHeader } from "@/components/ui/page-header";
 import { ImportCondominiUnitaWizard } from "./wizard";
+
+export const metadata = { title: "Importa condomìni e unità" };
 
 export default function ImportaCondominiUnitaPage() {
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Importa condomìni e unità</h1>
-        <p className="text-muted-foreground mt-1">
-          Carica un file .xlsx o .csv con più condomìni insieme: una riga per
-          ogni unità, con le colonne del condominio (nome, indirizzo) ripetute
-          su ogni riga. I condomìni già esistenti (stesso nome e indirizzo)
-          vengono riutilizzati, gli altri creati automaticamente.
-        </p>
-      </div>
-
+    <PageBody>
+      <PageHeader
+        indietro={{ href: "/admin/importa", label: "Importa dati" }}
+        titolo="Importa condomìni e unità"
+        descrizione="Il percorso più completo: da un unico file nascono i condomìni, le loro unità, le persone in anagrafica e le tabelle millesimali. I condomìni con stesso nome e indirizzo di uno esistente vengono riutilizzati invece che duplicati."
+      />
       <ImportCondominiUnitaWizard />
-    </div>
+    </PageBody>
   );
 }

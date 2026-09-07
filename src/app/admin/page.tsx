@@ -1,6 +1,11 @@
-import { Building2, Home, Wallet, CalendarClock } from "lucide-react";
+import { Building2, CalendarClock, FileSpreadsheet, Home, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { StatCard } from "@/components/ui/card";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
+import { StatCard, StatGrid } from "@/components/ui/stat-card";
+import { Card, CardDescription, CardHeader, CardHeaderText, CardTitle, Section } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+
+export const metadata = { title: "Panoramica" };
 
 export default async function AdminDashboard() {
   const supabase = await createClient();
@@ -13,28 +18,80 @@ export default async function AdminDashboard() {
       supabase.from("assemblee").select("*", { count: "exact", head: true }),
     ]);
 
-  const voci = [
-    { etichetta: "Condomini", valore: condomini ?? 0, icona: Building2 },
-    { etichetta: "Unità immobiliari", valore: unita ?? 0, icona: Home },
-    { etichetta: "Spese registrate", valore: spese ?? 0, icona: Wallet },
-    { etichetta: "Assemblee", valore: assemblee ?? 0, icona: CalendarClock },
-  ];
+  const nessunDato = !condomini;
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-3xl font-bold tracking-tight">
-        Dashboard amministratore
-      </h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {voci.map((voce) => (
-          <StatCard
-            key={voce.etichetta}
-            label={voce.etichetta}
-            value={voce.valore}
-            icon={voce.icona}
-          />
-        ))}
-      </div>
-    </div>
+    <PageBody>
+      <PageHeader
+        titolo="Panoramica"
+        descrizione="Il quadro d'insieme dei condomìni che gestisci."
+      />
+
+      <StatGrid>
+        <StatCard
+          label="Condomìni"
+          value={condomini ?? 0}
+          icon={Building2}
+          href="/admin/condomini"
+        />
+        <StatCard
+          label="Unità immobiliari"
+          value={unita ?? 0}
+          icon={Home}
+          href="/admin/condomini"
+        />
+        <StatCard label="Spese registrate" value={spese ?? 0} icon={Wallet} href="/admin/spese" />
+        <StatCard
+          label="Assemblee"
+          value={assemblee ?? 0}
+          icon={CalendarClock}
+          href="/admin/assemblee"
+        />
+      </StatGrid>
+
+      {/* Primo accesso: invece di quattro zeri senza indicazioni, la pagina
+          spiega qual è il primo passo e come farlo. */}
+      {nessunDato && (
+        <Section titolo="Da dove iniziare">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardHeaderText>
+                  <CardTitle>1. Aggiungi il primo condominio</CardTitle>
+                  <CardDescription>
+                    Inserisci nome, indirizzo ed eventualmente il conto corrente: da lì potrai
+                    creare le unità e collegare i proprietari.
+                  </CardDescription>
+                </CardHeaderText>
+              </CardHeader>
+              <div className="mt-auto">
+                <Button href="/admin/condomini">
+                  <Building2 className="size-4" aria-hidden="true" />
+                  Vai ai condomìni
+                </Button>
+              </div>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardHeaderText>
+                  <CardTitle>2. Oppure importa quello che hai già</CardTitle>
+                  <CardDescription>
+                    Se gestisci i condomìni con un foglio di calcolo, carica il file .xlsx o .csv:
+                    condomìni, unità, occupanti e millesimi entrano in un colpo solo.
+                  </CardDescription>
+                </CardHeaderText>
+              </CardHeader>
+              <div className="mt-auto">
+                <Button href="/admin/importa" variant="secondary">
+                  <FileSpreadsheet className="size-4" aria-hidden="true" />
+                  Importa dati
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </Section>
+      )}
+    </PageBody>
   );
 }

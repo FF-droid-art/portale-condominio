@@ -3,10 +3,18 @@
 import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 import { aggiornaContoCorrente } from "./actions";
-import { Field, Input, Label } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { Condominio } from "@/lib/types";
 
+/**
+ * Coordinate bancarie del condominio.
+ *
+ * Finché un conto è già salvato la scheda mostra un riepilogo in sola
+ * lettura — è così che si usa nove volte su dieci — e passa ai campi
+ * modificabili solo su richiesta.
+ */
 export function ContoCorrenteForm({ condominio }: { condominio: Condominio }) {
   const [iban, setIban] = useState(condominio.iban ?? "");
   const [banca, setBanca] = useState(condominio.banca ?? "");
@@ -37,63 +45,63 @@ export function ContoCorrenteForm({ condominio }: { condominio: Condominio }) {
   // Vista riassunto: conto già salvato e non in modifica.
   if (!modifica && haConto) {
     return (
-      <div className="flex flex-col gap-3">
-        <dl className="flex flex-col gap-2 text-sm">
+      <div className="flex flex-col gap-4">
+        <dl className="flex flex-col divide-y divide-border text-sm">
           <RigaConto etichetta="IBAN" valore={iban} mono />
           {banca.trim() && <RigaConto etichetta="Banca" valore={banca} />}
           {intestatario.trim() && <RigaConto etichetta="Intestatario" valore={intestatario} />}
         </dl>
-        <button
-          type="button"
-          onClick={() => setModifica(true)}
-          className="inline-flex w-fit items-center gap-1.5 text-sm text-accent hover:underline"
-        >
-          <Pencil className="size-4" /> Modifica
-        </button>
+        <Button variant="secondary" size="sm" className="w-fit" onClick={() => setModifica(true)}>
+          <Pencil className="size-4" aria-hidden="true" />
+          Modifica
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <Field>
-        <Label htmlFor="iban">IBAN</Label>
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        salva();
+      }}
+    >
+      <Field id="cc_iban" label="IBAN">
         <Input
-          id="iban"
           value={iban}
           onChange={(e) => setIban(e.target.value)}
           placeholder="IT00 X000 0000 0000 0000 0000 000"
+          autoCapitalize="characters"
+          spellCheck={false}
+          className="font-mono"
         />
       </Field>
-      <Field>
-        <Label htmlFor="banca">Banca</Label>
+      <Field id="cc_banca" label="Banca">
         <Input
-          id="banca"
           value={banca}
           onChange={(e) => setBanca(e.target.value)}
           placeholder="Nome della banca"
         />
       </Field>
-      <Field>
-        <Label htmlFor="intestatario_conto">Intestatario conto</Label>
+      <Field id="cc_intestatario" label="Intestatario del conto">
         <Input
-          id="intestatario_conto"
           value={intestatario}
           onChange={(e) => setIntestatario(e.target.value)}
           placeholder="Es. Condominio Via Roma 12"
         />
       </Field>
 
-      {errore && <p className="text-sm text-danger">{errore}</p>}
+      <FormError>{errore}</FormError>
 
-      <div className="flex gap-3">
-        <Button type="button" pending={pending} onClick={salva}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" pending={pending}>
           Salva conto corrente
         </Button>
         {condominio.iban && (
           <Button
             type="button"
-            variant="secondary"
+            variant="ghost"
             disabled={pending}
             onClick={() => {
               setIban(condominio.iban ?? "");
@@ -107,7 +115,7 @@ export function ContoCorrenteForm({ condominio }: { condominio: Condominio }) {
           </Button>
         )}
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -121,9 +129,11 @@ function RigaConto({
   mono?: boolean;
 }) {
   return (
-    <div className="flex justify-between gap-4">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5 first:pt-0 last:pb-0">
       <dt className="text-muted-foreground">{etichetta}</dt>
-      <dd className={mono ? "font-mono text-xs font-medium" : "font-medium"}>{valore}</dd>
+      <dd className={mono ? "break-all font-mono text-xs font-medium" : "font-medium"}>
+        {valore}
+      </dd>
     </div>
   );
 }

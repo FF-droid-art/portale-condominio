@@ -1,12 +1,12 @@
-import Link from "next/link";
 import { Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { SpesaForm } from "./form";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, RowIcon } from "@/components/ui/table";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatValuta, formatData } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { SpesaForm } from "./form";
+import { ElencoSpese, type SpesaInElenco } from "./elenco-spese";
+
+export const metadata = { title: "Spese" };
 
 export default async function SpesePage() {
   const supabase = await createClient();
@@ -28,72 +28,45 @@ export default async function SpesePage() {
     pagamentiPerSpesa.set(r.spesa_id, voce);
   }
 
+  const elenco: SpesaInElenco[] = (spese ?? []).map((s) => {
+    const pagamenti = pagamentiPerSpesa.get(s.id);
+    return {
+      id: s.id,
+      descrizione: s.descrizione,
+      categoria: s.categoria,
+      importo_totale: s.importo_totale,
+      data_spesa: s.data_spesa,
+      condominioNome: s.condominio?.nome ?? null,
+      ripartizioniTotali: pagamenti?.totale ?? 0,
+      ripartizioniPagate: pagamenti?.pagate ?? 0,
+    };
+  });
+
   return (
-    <div className="flex flex-col gap-8">
-      <h1 className="text-3xl font-bold tracking-tight">Spese</h1>
+    <PageBody>
+      <PageHeader
+        titolo="Spese"
+        descrizione="Tutte le spese dei condomìni che amministri. Apri una spesa per generare o correggere la ripartizione fra le unità."
+        azioni={<SpesaForm condomini={condomini ?? []} />}
+      />
 
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
-        <div className="w-full lg:w-80 shrink-0 lg:sticky lg:top-24">
-          <Card>
-            <CardHeader>
-              <CardTitle>Nuova spesa</CardTitle>
-            </CardHeader>
-            <SpesaForm condomini={condomini ?? []} />
-          </Card>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          {spese?.length ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Descrizione</TableHead>
-                  <TableHead>Condominio</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Importo</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Pagamenti</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {spese.map((s) => {
-                  const pagamenti = pagamentiPerSpesa.get(s.id);
-                  return (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-medium">
-                        <Link href={`/admin/spese/${s.id}`} className="hover:text-accent">
-                          <RowIcon icon={Wallet}>{s.descrizione}</RowIcon>
-                        </Link>
-                      </TableCell>
-                      <TableCell>{s.condominio?.nome}</TableCell>
-                      <TableCell>
-                        <Badge>{s.categoria}</Badge>
-                      </TableCell>
-                      <TableCell>{formatValuta(s.importo_totale)}</TableCell>
-                      <TableCell>{formatData(s.data_spesa)}</TableCell>
-                      <TableCell>
-                        {pagamenti ? (
-                          <Badge variant={pagamenti.pagate === pagamenti.totale ? "success" : "neutral"}>
-                            {pagamenti.pagate}/{pagamenti.totale} pagate
-                          </Badge>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">non ripartita</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          ) : (
-            <EmptyState
-              icon={Wallet}
-              title="Nessuna spesa ancora registrata"
-              description="Aggiungi la prima spesa dal modulo a sinistra."
-            />
-          )}
-        </div>
-      </div>
-    </div>
+      {elenco.length ? (
+        <ElencoSpese spese={elenco} />
+      ) : (
+        <EmptyState
+          icon={Wallet}
+          title="Nessuna spesa registrata"
+          description="Registra la prima spesa oppure importa in blocco le spese storiche già ripartite da un file .xlsx o .csv."
+          action={
+            <>
+              <SpesaForm condomini={condomini ?? []} />
+              <Button href="/admin/importa/spese" variant="secondary">
+                Importa spese storiche
+              </Button>
+            </>
+          }
+        />
+      )}
+    </PageBody>
   );
 }

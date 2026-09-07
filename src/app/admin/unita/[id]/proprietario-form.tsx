@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { UserPlus } from "lucide-react";
 import { aggiungiSoggetto } from "./actions";
 import { haQuota } from "@/lib/ruoli";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Label, Select } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
+import { Checkbox, Field, FormGrid, Input, Select } from "@/components/ui/input";
+import { Alert, FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 const OPZIONI_TIPO_SOGGETTO: { value: string; label: string }[] = [
@@ -18,6 +20,15 @@ const OPZIONI_TIPO_SOGGETTO: { value: string; label: string }[] = [
 
 type Esistente = { id: string; nominativo: string; email: string | null };
 
+/**
+ * Aggiunta di un soggetto (proprietario, usufruttuario, inquilino…) a
+ * un'unità.
+ *
+ * Quando la server action segnala che in quel condominio esiste già una
+ * persona simile, il passo di conferma prende il posto del modulo dentro la
+ * stessa finestra invece di aprirne una seconda sopra: una sola cosa alla
+ * volta a cui rispondere, senza perdere quello che si era digitato.
+ */
 export function ProprietarioForm({
   unitaId,
   condominioId,
@@ -25,6 +36,7 @@ export function ProprietarioForm({
   unitaId: string;
   condominioId: string;
 }) {
+  const [aperto, setAperto] = useState(false);
   const [nominativo, setNominativo] = useState("");
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");
@@ -43,6 +55,12 @@ export function ProprietarioForm({
     setTipoSoggetto("proprietario");
     setQuota("100");
     setDirittoVoto(true);
+  }
+
+  function apri() {
+    setErrore(null);
+    setConferma(null);
+    setAperto(true);
   }
 
   function invia(opts: { riusaId?: string; forzaNuovo?: boolean }) {
@@ -73,130 +91,157 @@ export function ProprietarioForm({
       // successo
       setConferma(null);
       reset();
+      setAperto(false);
     });
   }
 
   return (
     <>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          invia({});
-        }}
-        className="flex flex-col gap-3"
+      <Button variant="secondary" size="sm" onClick={apri}>
+        <UserPlus className="size-4" aria-hidden="true" />
+        Aggiungi soggetto
+      </Button>
+
+      <Dialog
+        aperto={aperto}
+        onChiudi={() => setAperto(false)}
+        bloccato={pending}
+        titolo={conferma ? "È la stessa persona?" : "Aggiungi un soggetto"}
+        descrizione={
+          conferma
+            ? undefined
+            : "Il soggetto viene creato in anagrafica del condominio e collegato a questa unità."
+        }
+        larghezza="md"
       >
-        <Field>
-          <Label htmlFor="nominativo">Nome / Denominazione</Label>
-          <Input
-            id="nominativo"
-            value={nominativo}
-            onChange={(e) => setNominativo(e.target.value)}
-            required
-          />
-        </Field>
+        {conferma ? (
+          <div className="flex flex-col gap-5">
+            <Alert tono="warning" titolo="Esiste già una persona simile in questo condominio">
+              <strong className="font-semibold">{conferma.nominativo}</strong>
+              {conferma.email ? ` (${conferma.email})` : ""} è già in anagrafica. Se è la stessa
+              persona conviene riutilizzarla, così i contatti restano uno solo.
+            </Alert>
 
-        <Field>
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </Field>
-
-        <Field>
-          <Label htmlFor="telefono">Telefono (opzionale)</Label>
-          <Input
-            id="telefono"
-            value={telefono}
-            onChange={(e) => setTelefono(e.target.value)}
-          />
-        </Field>
-
-        <Field>
-          <Label htmlFor="tipo_soggetto">Ruolo</Label>
-          <Select
-            id="tipo_soggetto"
-            value={tipoSoggetto}
-            onChange={(e) => setTipoSoggetto(e.target.value)}
-          >
-            {OPZIONI_TIPO_SOGGETTO.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        {haQuota(tipoSoggetto) && (
-          <Field>
-            <Label htmlFor="quota_possesso">Quota di possesso (%)</Label>
-            <Input
-              id="quota_possesso"
-              type="number"
-              step="0.01"
-              min="0.01"
-              max="100"
-              value={quota}
-              onChange={(e) => setQuota(e.target.value)}
-              required
-            />
-          </Field>
-        )}
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={dirittoVoto}
-            onChange={(e) => setDirittoVoto(e.target.checked)}
-            className="size-4"
-          />
-          Ha diritto di voto in assemblea
-        </label>
-
-        {errore && <p className="text-sm text-danger">{errore}</p>}
-
-        <Button type="submit" pending={pending} disabled={pending}>
-          Aggiungi soggetto
-        </Button>
-      </form>
-
-      {conferma && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => !pending && setConferma(null)}
-        >
-          <Card
-            className="w-full max-w-sm gap-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-sm">
-              In questo condominio esiste già{" "}
-              <span className="font-semibold">{conferma.nominativo}</span>
-              {conferma.email ? ` (${conferma.email})` : ""}. È la stessa persona?
-            </p>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
-                type="button"
-                pending={pending}
-                onClick={() => invia({ riusaId: conferma.id })}
-              >
-                Sì, è la stessa
-              </Button>
-              <Button
-                type="button"
                 variant="secondary"
                 disabled={pending}
                 onClick={() => invia({ forzaNuovo: true })}
               >
-                No, è un&apos;altra
+                No, è un&apos;altra persona
+              </Button>
+              <Button pending={pending} onClick={() => invia({ riusaId: conferma.id })}>
+                Sì, è la stessa
               </Button>
             </div>
-          </Card>
-        </div>
-      )}
+          </div>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              invia({});
+            }}
+            className="flex flex-col gap-4"
+          >
+            <Field id="nominativo" label="Nome o denominazione" required>
+              <Input
+                value={nominativo}
+                onChange={(e) => setNominativo(e.target.value)}
+                placeholder="Es. Mario Rossi"
+                required
+              />
+            </Field>
+
+            <FormGrid colonne={2}>
+              <Field id="email" label="Email" required>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="nome@esempio.it"
+                  required
+                />
+              </Field>
+              <Field id="telefono" label="Telefono" hint="Facoltativo.">
+                <Input
+                  type="tel"
+                  inputMode="tel"
+                  value={telefono}
+                  onChange={(e) => setTelefono(e.target.value)}
+                />
+              </Field>
+            </FormGrid>
+
+            <Field
+              id="tipo_soggetto"
+              label="Ruolo sull'unità"
+              hint="Determina se la persona concorre alla quota di possesso."
+            >
+              <Select value={tipoSoggetto} onChange={(e) => setTipoSoggetto(e.target.value)}>
+                {OPZIONI_TIPO_SOGGETTO.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            {haQuota(tipoSoggetto) && (
+              <Field
+                id="quota_possesso"
+                label="Quota di possesso (%)"
+                required
+                hint="100% se è l'unico titolare; in caso di comproprietà, la sua parte."
+              >
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max="100"
+                  inputMode="decimal"
+                  value={quota}
+                  onChange={(e) => setQuota(e.target.value)}
+                  className="cifre"
+                  required
+                />
+              </Field>
+            )}
+
+            <label className="flex items-start gap-2.5 rounded-xl border border-border p-3.5 text-sm">
+              <Checkbox
+                checked={dirittoVoto}
+                onChange={(e) => setDirittoVoto(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium">Ha diritto di voto in assemblea</span>
+                <span className="text-xs text-muted-foreground">
+                  Di norma spetta al proprietario; per le unità locate può spettare al conduttore
+                  su alcune materie.
+                </span>
+              </span>
+            </label>
+
+            <FormError>{errore}</FormError>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => setAperto(false)}
+              >
+                Annulla
+              </Button>
+              <Button type="submit" pending={pending}>
+                {pending ? "Salvataggio…" : "Aggiungi soggetto"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Dialog>
     </>
   );
 }

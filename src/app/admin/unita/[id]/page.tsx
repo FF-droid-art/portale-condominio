@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, Home, User } from "lucide-react";
+import { Home, User, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
+import { Card, Section } from "@/components/ui/card";
 import { Badge, StatoBadge } from "@/components/ui/badge";
 import {
   Table,
@@ -12,6 +13,7 @@ import {
   TableHead,
   TableCell,
   RowIcon,
+  Vuoto,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { haQuota } from "@/lib/ruoli";
@@ -50,160 +52,203 @@ export default async function UnitaDettaglioPage({
   const attivi = tutti.filter((p) => p.attivo !== false);
   const storici = tutti.filter((p) => p.attivo === false);
 
+  function nomeSoggetto(p: (typeof tutti)[number]): string {
+    return (
+      p.anagrafica?.nominativo ??
+      (p.utente ? `${p.utente.nome} ${p.utente.cognome}` : "—")
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-8">
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-sm text-muted-foreground">
-              <Link href={`/admin/condomini/${unita.condominio_id}`} className="hover:text-accent">
-                <RowIcon icon={Building2}>{unita.condominio?.nome}</RowIcon>
+    <PageBody>
+      <PageHeader
+        indietro={{
+          href: `/admin/condomini/${unita.condominio_id}`,
+          label: unita.condominio?.nome ?? "Condominio",
+        }}
+        titolo={unita.identificativo}
+        descrizione="Soggetti collegati all'unità e millesimi su cui si calcolano quote e diritto di voto."
+      />
+
+      {/* Dati dell'unità in una riga sola: sono pochi e si leggono a colpo
+          d'occhio, i millesimi si modificano direttamente da qui. */}
+      <Card padding="sm">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Condominio
+            </dt>
+            <dd className="text-sm font-medium">
+              <Link
+                href={`/admin/condomini/${unita.condominio_id}`}
+                className="rounded hover:text-accent-ink"
+              >
+                {unita.condominio?.nome ?? "—"}
               </Link>
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight mt-2">
-              {unita.identificativo}
-            </h1>
+            </dd>
           </div>
-          <div className="flex flex-col items-end gap-1 text-sm text-muted-foreground">
-            <p>Piano: {unita.piano ?? "-"}</p>
-            <p className="flex items-center gap-1">
-              Millesimi:
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Piano
+            </dt>
+            <dd className="text-sm font-medium">{unita.piano ?? "—"}</dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Millesimi
+            </dt>
+            <dd className="text-sm">
               <ModificaMillesimiButton
                 unitaId={unita.id}
                 condominioId={unita.condominio_id}
                 identificativo={unita.identificativo}
                 millesimi={unita.millesimi_proprieta}
               />
-            </p>
+            </dd>
           </div>
-        </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Soggetti attivi
+            </dt>
+            <dd className="cifre text-sm font-medium">{attivi.length}</dd>
+          </div>
+        </dl>
       </Card>
 
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
-        <div className="w-full lg:w-80 shrink-0 lg:sticky lg:top-24">
-          <Card>
-            <CardHeader>
-              <CardTitle>Aggiungi soggetto</CardTitle>
-            </CardHeader>
-            <ProprietarioForm unitaId={unita.id} condominioId={unita.condominio_id} />
-          </Card>
-        </div>
+      <Section
+        titolo="Soggetti collegati"
+        descrizione="Proprietari, usufruttuari, conduttori e altri titolari attualmente collegati a questa unità."
+        azioni={<ProprietarioForm unitaId={unita.id} condominioId={unita.condominio_id} />}
+      >
+        {attivi.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="Nessun soggetto collegato"
+            description="Aggiungi il proprietario o l'occupante dell'unità: sarà lui a ricevere gli avvisi e a poter votare in assemblea."
+            action={<ProprietarioForm unitaId={unita.id} condominioId={unita.condominio_id} />}
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Soggetto</TableHead>
+                <TableHead>Ruolo</TableHead>
+                <TableHead numeric>Quota</TableHead>
+                <TableHead>Diritto di voto</TableHead>
+                <TableHead>
+                  <span className="sr-only">Azioni</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {attivi.map((p) => {
+                const contatti = [
+                  p.anagrafica?.email ?? p.utente?.email ?? null,
+                  p.anagrafica?.telefono ?? null,
+                ].filter(Boolean);
+                return (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-medium">
+                      <RowIcon icon={User}>
+                        <span className="flex flex-col">
+                          <span>{nomeSoggetto(p)}</span>
+                          {contatti.length > 0 && (
+                            <span className="text-xs font-normal text-muted-foreground">
+                              {contatti.join(" · ")}
+                            </span>
+                          )}
+                        </span>
+                      </RowIcon>
+                    </TableCell>
+                    <TableCell etichetta="Ruolo">
+                      <StatoBadge tipo="tipo_soggetto" valore={p.tipo_soggetto} />
+                    </TableCell>
+                    <TableCell etichetta="Quota" numeric>
+                      {haQuota(p.tipo_soggetto) ? `${p.quota_possesso}%` : <Vuoto />}
+                    </TableCell>
+                    <TableCell etichetta="Diritto di voto">
+                      {p.diritto_voto ? (
+                        <Badge variant="success" punto>
+                          Sì
+                        </Badge>
+                      ) : (
+                        <Badge variant="neutral" punto>
+                          No
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="md:text-right">
+                      <span className="flex items-center justify-end gap-1">
+                        {p.anagrafica_id && (
+                          <ModificaContattiButton
+                            anagraficaId={p.anagrafica_id}
+                            unitaId={unita.id}
+                            nominativo={p.anagrafica?.nominativo ?? ""}
+                            email={p.anagrafica?.email ?? null}
+                            telefono={p.anagrafica?.telefono ?? null}
+                          />
+                        )}
+                        <RimuoviProprietarioButton
+                          id={p.id}
+                          unitaId={unita.id}
+                          nominativo={nomeSoggetto(p)}
+                        />
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </Section>
 
-        <div className="flex-1 min-w-0 flex flex-col gap-6">
-          {tutti.length === 0 ? (
-            <EmptyState
-              icon={Home}
-              title="Nessun soggetto collegato"
-              description="Aggiungi un soggetto dal riquadro a sinistra."
-            />
-          ) : (
-            <>
-              {attivi.length ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Soggetto</TableHead>
-                      <TableHead>Ruolo</TableHead>
-                      <TableHead>Quota</TableHead>
-                      <TableHead>Voto</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {attivi.map((p) => (
-                      <TableRow key={p.id}>
-                        <TableCell className="font-medium">
-                          <RowIcon icon={User}>
-                            <div className="flex flex-col">
-                              <span>
-                                {p.anagrafica?.nominativo ??
-                                  (p.utente ? `${p.utente.nome} ${p.utente.cognome}` : "—")}
-                              </span>
-                              {(p.anagrafica?.email ?? p.utente?.email ?? p.anagrafica?.telefono) && (
-                                <span className="text-xs font-normal text-muted-foreground">
-                                  {p.anagrafica?.email ?? p.utente?.email ?? ""}
-                                  {p.anagrafica?.telefono ? ` · ${p.anagrafica.telefono}` : ""}
-                                </span>
-                              )}
-                            </div>
-                          </RowIcon>
-                        </TableCell>
-                        <TableCell>
+      {storici.length > 0 && (
+        <Section>
+          <details className="group rounded-2xl border border-border bg-surface">
+            <summary className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl px-5 py-4 text-sm font-medium">
+              <span className="flex items-center gap-2.5">
+                <Home className="size-4 text-muted-foreground" aria-hidden="true" />
+                Soggetti precedenti
+                <Badge variant="neutral">{storici.length}</Badge>
+              </span>
+              <span className="text-xs font-normal text-muted-foreground group-open:hidden">
+                Mostra
+              </span>
+              <span className="hidden text-xs font-normal text-muted-foreground group-open:inline">
+                Nascondi
+              </span>
+            </summary>
+            <div className="border-t border-border p-5">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Soggetto</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Ruolo precedente</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {storici.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{nomeSoggetto(p)}</TableCell>
+                      <TableCell etichetta="Email">
+                        {p.anagrafica?.email ?? <Vuoto />}
+                      </TableCell>
+                      <TableCell etichetta="Ruolo precedente">
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">ex</span>
                           <StatoBadge tipo="tipo_soggetto" valore={p.tipo_soggetto} />
-                        </TableCell>
-                        <TableCell>
-                          {haQuota(p.tipo_soggetto) ? (
-                            <Badge variant="neutral">{p.quota_possesso}%</Badge>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {p.diritto_voto ? (
-                            <Badge variant="success">Sì</Badge>
-                          ) : (
-                            <Badge variant="neutral">No</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {p.anagrafica_id && (
-                              <ModificaContattiButton
-                                anagraficaId={p.anagrafica_id}
-                                unitaId={unita.id}
-                                nominativo={p.anagrafica?.nominativo ?? ""}
-                                email={p.anagrafica?.email ?? null}
-                                telefono={p.anagrafica?.telefono ?? null}
-                              />
-                            )}
-                            <RimuoviProprietarioButton id={p.id} unitaId={unita.id} />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-sm text-muted-foreground">Nessun soggetto attivo.</p>
-              )}
-
-              {storici.length > 0 && (
-                <details className="rounded-2xl border border-border bg-surface p-4">
-                  <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
-                    Ex soggetti ({storici.length})
-                  </summary>
-                  <div className="mt-3">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Soggetto</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Ruolo precedente</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {storici.map((p) => (
-                          <TableRow key={p.id}>
-                            <TableCell className="font-medium">
-                              {p.anagrafica?.nominativo ??
-                                (p.utente ? `${p.utente.nome} ${p.utente.cognome}` : "—")}
-                            </TableCell>
-                            <TableCell>{p.anagrafica?.email ?? "—"}</TableCell>
-                            <TableCell>
-                              <span className="mr-1 text-sm text-muted-foreground">ex</span>
-                              <StatoBadge tipo="tipo_soggetto" valore={p.tipo_soggetto} />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </details>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </details>
+        </Section>
+      )}
+    </PageBody>
   );
 }

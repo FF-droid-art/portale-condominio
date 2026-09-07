@@ -2,8 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Home, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
+import {
+  Card,
+  CardHeader,
+  CardHeaderText,
+  CardTitle,
+  CardDescription,
+  Section,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatCard, StatGrid } from "@/components/ui/stat-card";
 import {
   Table,
   TableHeader,
@@ -12,6 +21,7 @@ import {
   TableHead,
   TableCell,
   RowIcon,
+  Vuoto,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatValuta, formatData } from "@/lib/format";
@@ -48,7 +58,12 @@ export default async function SpesaDettaglioPage({
       .order("nome"),
   ]);
 
-  const pagate = (ripartizioni ?? []).filter((r) => r.stato_pagamento === "pagato").length;
+  const righe = ripartizioni ?? [];
+  const pagate = righe.filter((r) => r.stato_pagamento === "pagato").length;
+  const totaleRipartito = righe.reduce((somma, r) => somma + r.importo_dovuto, 0);
+  const incassato = righe
+    .filter((r) => r.stato_pagamento === "pagato")
+    .reduce((somma, r) => somma + r.importo_dovuto, 0);
 
   let documentoSignedUrl: string | null = null;
   if (spesa.documento_url) {
@@ -59,89 +74,138 @@ export default async function SpesaDettaglioPage({
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm text-muted-foreground">
-              <Link href={`/admin/condomini/${spesa.condominio_id}`} className="hover:text-accent">
-                {spesa.condominio?.nome}
-              </Link>
-            </p>
-            <h1 className="text-3xl font-bold tracking-tight">{spesa.descrizione}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{formatData(spesa.data_spesa)}</p>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <Badge>{spesa.categoria}</Badge>
-            <p className="text-2xl font-semibold">{formatValuta(spesa.importo_totale)}</p>
-          </div>
-        </div>
-      </Card>
+    <PageBody>
+      <PageHeader
+        indietro={{ href: "/admin/spese", label: "Spese" }}
+        eyebrow={
+          <Link
+            href={`/admin/condomini/${spesa.condominio_id}`}
+            className="rounded hover:text-accent-ink"
+          >
+            {spesa.condominio?.nome}
+          </Link>
+        }
+        titolo={spesa.descrizione}
+        descrizione={
+          <>
+            {formatData(spesa.data_spesa)}
+            {spesa.fornitore ? ` · ${spesa.fornitore}` : ""}
+          </>
+        }
+        meta={<Badge variant="outline">{spesa.categoria}</Badge>}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Documento</CardTitle>
-        </CardHeader>
-        <DocumentoSpesa
-          spesaId={spesa.id}
-          documentoUrl={spesa.documento_url}
-          signedUrl={documentoSignedUrl}
+      <StatGrid colonne={3}>
+        <StatCard label="Importo totale" value={formatValuta(spesa.importo_totale)} icon={Wallet} />
+        <StatCard
+          label="Ripartito fra le unità"
+          value={formatValuta(totaleRipartito)}
+          icon={Home}
+          hint={
+            righe.length
+              ? `${righe.length} ${righe.length === 1 ? "quota" : "quote"}`
+              : "ripartizione non ancora generata"
+          }
         />
-      </Card>
+        <StatCard
+          label="Incassato"
+          value={formatValuta(incassato)}
+          tono={righe.length && pagate === righe.length ? "success" : "warning"}
+          hint={righe.length ? `${pagate} di ${righe.length} quote pagate` : "nessuna quota"}
+        />
+      </StatGrid>
 
-      <section className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium">Ripartizione per unità</h2>
-          {ripartizioni?.length ? (
-            <Badge variant={pagate === ripartizioni.length ? "success" : "neutral"}>
-              {pagate}/{ripartizioni.length} pagate
-            </Badge>
-          ) : null}
+      <div className="grid gap-6 lg:grid-cols-3 lg:items-start">
+        <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+          <Section
+            titolo="Ripartizione per unità"
+            descrizione={
+              righe.length
+                ? "Segna qui i pagamenti che ricevi fuori dal portale (bonifico, contanti). Le quote pagate con carta si aggiornano da sole."
+                : undefined
+            }
+            azioni={
+              righe.length ? (
+                <Badge variant={pagate === righe.length ? "success" : "warning"} punto>
+                  <span className="cifre">
+                    {pagate}/{righe.length}
+                  </span>{" "}
+                  pagate
+                </Badge>
+              ) : undefined
+            }
+          >
+            {righe.length ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Unità</TableHead>
+                    <TableHead numeric>Importo dovuto</TableHead>
+                    <TableHead>Scadenza</TableHead>
+                    <TableHead>Pagato il</TableHead>
+                    <TableHead>Stato</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {righe.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-medium">
+                        <RowIcon icon={Home}>{r.unita?.identificativo}</RowIcon>
+                      </TableCell>
+                      <TableCell etichetta="Importo dovuto" numeric className="font-semibold">
+                        {formatValuta(r.importo_dovuto)}
+                      </TableCell>
+                      <TableCell etichetta="Scadenza">
+                        {r.data_scadenza ? formatData(r.data_scadenza) : <Vuoto />}
+                      </TableCell>
+                      <TableCell etichetta="Pagato il">
+                        {r.data_pagamento ? formatData(r.data_pagamento) : <Vuoto />}
+                      </TableCell>
+                      <TableCell etichetta="Stato">
+                        <RigaRipartizione
+                          ripartizione={r}
+                          spesaId={spesa.id}
+                          etichettaUnita={r.unita?.identificativo}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <EmptyState
+                icon={Wallet}
+                title="Ripartizione non ancora generata"
+                description="Distribuisci l'importo totale fra le unità del condominio in proporzione ai millesimi. Potrai comunque correggere gli stati di pagamento uno per uno."
+                action={
+                  <GeneraRipartizioniButton
+                    spesaId={spesa.id}
+                    condominioId={spesa.condominio_id}
+                    importoTotale={spesa.importo_totale}
+                    tabelleMillesimali={tabelleMillesimali ?? []}
+                  />
+                }
+              />
+            )}
+          </Section>
         </div>
 
-        {ripartizioni?.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Unità</TableHead>
-                <TableHead>Importo dovuto</TableHead>
-                <TableHead>Scadenza</TableHead>
-                <TableHead>Pagato il</TableHead>
-                <TableHead>Stato</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ripartizioni.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">
-                    <RowIcon icon={Home}>{r.unita?.identificativo}</RowIcon>
-                  </TableCell>
-                  <TableCell>{formatValuta(r.importo_dovuto)}</TableCell>
-                  <TableCell>{r.data_scadenza ? formatData(r.data_scadenza) : "-"}</TableCell>
-                  <TableCell>{r.data_pagamento ? formatData(r.data_pagamento) : "-"}</TableCell>
-                  <TableCell>
-                    <RigaRipartizione ripartizione={r} spesaId={spesa.id} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <EmptyState
-            icon={Wallet}
-            title="Nessuna ripartizione per questa spesa"
-            description="Genera automaticamente una quota per unità, proporzionale ai millesimi di proprietà."
-            action={
-              <GeneraRipartizioniButton
-                spesaId={spesa.id}
-                condominioId={spesa.condominio_id}
-                importoTotale={spesa.importo_totale}
-                tabelleMillesimali={tabelleMillesimali ?? []}
-              />
-            }
+        <Card>
+          <CardHeader>
+            <CardHeaderText>
+              <CardTitle>Documento</CardTitle>
+              <CardDescription>
+                La fattura o la ricevuta collegata a questa spesa.
+              </CardDescription>
+            </CardHeaderText>
+          </CardHeader>
+          <DocumentoSpesa
+            spesaId={spesa.id}
+            documentoUrl={spesa.documento_url}
+            signedUrl={documentoSignedUrl}
           />
-        )}
-      </section>
-    </div>
+        </Card>
+      </div>
+    </PageBody>
   );
 }

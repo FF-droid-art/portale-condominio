@@ -1,53 +1,110 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   SISTEMA DI DESIGN — Portale Condominio
+   --------------------------------------------------------------------------
+   Un'unica scala di colori, spaziature, raggi e ombre per tutta
+   l'applicazione: pagine pubbliche, autenticazione, area condòmino e
+   pannello amministratore.
+
+   Principi seguiti (Refactoring UI, Nielsen Norman Group, WCAG 2.2):
+   - palette ristretta: neutri per la struttura, un solo colore di brand per
+     le azioni, tre colori semantici per gli stati;
+   - gerarchia costruita con peso e colore del testo prima che con il colore
+     di brand (che resta riservato alle azioni e allo stato attivo);
+   - ogni coppia testo/sfondo verificata almeno 4.5:1 in entrambi i temi;
+   - anello di focus sempre visibile, ≥ 3:1 rispetto allo sfondo.
+   ========================================================================== */
+
 :root {
-  --background: #f2f2f5;
-  --foreground: #0a0a0a;
+  color-scheme: light;
+
+  /* --- Superfici e testo ------------------------------------------------ */
+  --background: #f5f6f8;
   --surface: #ffffff;
-  --surface-muted: #ececef;
-  --border: rgb(0 0 0 / 0.08);
-  --border-strong: rgb(0 0 0 / 0.16);
-  --muted-foreground: #6b7280;
+  --surface-muted: #f0f2f5;
+  --surface-sunken: #e9ecf1;
+  --foreground: #0e131a;
+  --muted-foreground: #5a6472;
+  --border: #e2e6eb;
+  --border-strong: #c9d1da;
 
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
+  /* --- Brand ------------------------------------------------------------
+     `accent` è il riempimento delle azioni primarie (testo bianco sopra).
+     `accent-ink` è lo stesso blu ma calibrato per il TESTO su superficie
+     chiara/scura: servono due valori distinti perché un solo colore non può
+     avere contrasto sufficiente sia come sfondo sia come testo. */
+  --accent: #2d5bd0;
+  --accent-hover: #24499f;
   --accent-foreground: #ffffff;
-  --accent-2: #14b8a6;
+  --accent-ink: #2451b8;
+  --accent-subtle: #eaf0fd;
 
-  --success: #16a34a;
-  --success-bg: #dcfce7;
-  --danger: #dc2626;
-  --danger-bg: #fee2e2;
-  --warning: #d97706;
-  --warning-bg: #fef3c7;
-  --neutral-bg: #f4f4f6;
+  /* --- Stati semantici -------------------------------------------------- */
+  --success: #147a3d;
+  --success-bg: #e3f5e9;
+  --danger: #c0272d;
+  --danger-bg: #fdeaea;
+  --warning: #9a5b06;
+  --warning-bg: #fdf1dc;
+  --neutral-bg: #eef0f4;
 
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 24px -8px rgb(0 0 0 / 0.10);
-  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.06), 0 16px 32px -8px rgb(0 0 0 / 0.16);
+  /* --- Focus ------------------------------------------------------------ */
+  --ring: #2d5bd0;
 
-  /* Blu navy di brand, fisso: non cambia tra tema chiaro/scuro (come lo
-     sfondo della schermata di login di Revolut, sempre scuro). */
-  --navy: #0b0f1a;
-  --navy-2: #131c2e;
-  --navy-light: #3161b3;
+  /* --- Profondità -------------------------------------------------------
+     Due componenti per ogni ombra (una stretta e netta, una ampia e
+     morbida), come una luce dall'alto. */
+  --shadow-xs: 0 1px 2px rgb(13 18 28 / 0.06);
+  --shadow-card: 0 1px 2px rgb(13 18 28 / 0.05), 0 2px 8px -3px rgb(13 18 28 / 0.08);
+  --shadow-card-hover: 0 1px 2px rgb(13 18 28 / 0.06), 0 10px 24px -8px rgb(13 18 28 / 0.16);
+  --shadow-pop: 0 2px 4px rgb(13 18 28 / 0.06), 0 16px 32px -10px rgb(13 18 28 / 0.20);
+  --shadow-overlay: 0 8px 12px -6px rgb(13 18 28 / 0.10), 0 32px 64px -16px rgb(13 18 28 / 0.30);
+
+  /* --- Blu navy di brand -------------------------------------------------
+     Fisso: non cambia tra tema chiaro e scuro. Usato per lo sfondo sempre
+     scuro delle pagine di autenticazione (scelta deliberata, come la
+     schermata di accesso di alcune app bancarie) e per l'hero pubblico. */
+  --navy: #070b14;
+  --navy-2: #0e1626;
+  --navy-3: #16233b;
+  --navy-light: #2f5ea8;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #f4f4f5;
-    --surface: #141416;
-    --surface-muted: #1c1c1f;
-    --border: rgb(255 255 255 / 0.10);
-    --border-strong: rgb(255 255 255 / 0.18);
-    --muted-foreground: #9ca3af;
+    color-scheme: dark;
+
+    --background: #0b0e13;
+    --surface: #14181f;
+    --surface-muted: #1b212a;
+    --surface-sunken: #10141a;
+    --foreground: #e9edf3;
+    --muted-foreground: #9aa5b4;
+    --border: #262d38;
+    --border-strong: #39424f;
+
+    --accent: #3566d8;
+    --accent-hover: #4a78e6;
     --accent-foreground: #ffffff;
-    --success-bg: rgb(22 163 74 / 0.15);
-    --danger-bg: rgb(220 38 38 / 0.15);
-    --warning-bg: rgb(217 119 6 / 0.15);
-    --neutral-bg: #1c1c1f;
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 24px -8px rgb(0 0 0 / 0.5);
-    --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 0.35), 0 16px 32px -8px rgb(0 0 0 / 0.6);
+    --accent-ink: #8ab0fa;
+    --accent-subtle: rgb(53 102 216 / 0.18);
+
+    --success: #4cc57e;
+    --success-bg: rgb(76 197 126 / 0.16);
+    --danger: #f2727a;
+    --danger-bg: rgb(242 114 122 / 0.16);
+    --warning: #e0a33e;
+    --warning-bg: rgb(224 163 62 / 0.16);
+    --neutral-bg: #1f2630;
+
+    --ring: #8ab0fa;
+
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px -3px rgb(0 0 0 / 0.5);
+    --shadow-card-hover: 0 1px 2px rgb(0 0 0 / 0.45), 0 10px 24px -8px rgb(0 0 0 / 0.6);
+    --shadow-pop: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 32px -10px rgb(0 0 0 / 0.65);
+    --shadow-overlay: 0 8px 12px -6px rgb(0 0 0 / 0.5), 0 32px 64px -16px rgb(0 0 0 / 0.75);
   }
 }
 
@@ -56,6 +113,7 @@
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-surface-sunken: var(--surface-sunken);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-muted-foreground: var(--muted-foreground);
@@ -63,7 +121,8 @@
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-foreground: var(--accent-foreground);
-  --color-accent-2: var(--accent-2);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-subtle: var(--accent-subtle);
 
   --color-success: var(--success);
   --color-success-bg: var(--success-bg);
@@ -73,25 +132,240 @@
   --color-warning-bg: var(--warning-bg);
   --color-neutral-bg: var(--neutral-bg);
 
-  --shadow-card: var(--shadow-card);
-  --shadow-card-hover: var(--shadow-card-hover);
+  --color-ring: var(--ring);
 
   --color-navy: var(--navy);
   --color-navy-2: var(--navy-2);
+  --color-navy-3: var(--navy-3);
   --color-navy-light: var(--navy-light);
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+  --shadow-pop: var(--shadow-pop);
+  --shadow-overlay: var(--shadow-overlay);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+
+/* ==========================================================================
+   BASE
+   ========================================================================== */
 
 body {
   background: var(--background);
   color: var(--foreground);
 }
 
-/* Sfondo delle pagine di autenticazione: blu chiaro in alto a sinistra,
-   più scuro al centro, di nuovo più chiaro in basso a destra (stessa
-   diagonale del gradiente usato nell'hero della home). */
+/* Un solo anello di focus per tutta l'applicazione: sempre visibile, con
+   contrasto sufficiente su qualsiasi superficie (WCAG 2.4.11 / 2.4.13).
+   I singoli componenti non ridefiniscono il focus, così non può capitare
+   che un controllo resti senza indicatore. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Chi ha attivato la riduzione del movimento non vede animazioni. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   UTILITÀ
+   ========================================================================== */
+
+/* Cifre a larghezza fissa: importi e millesimi incolonnati restano
+   allineati e confrontabili a colpo d'occhio. */
+.cifre {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Sfondo delle pagine di autenticazione: navy sempre scuro con un alone
+   più chiaro in alto a sinistra, sulla stessa diagonale dell'hero pubblico. */
 .bg-auth {
-  background: linear-gradient(135deg, var(--navy-light), var(--navy) 50%, var(--navy-light));
+  background-color: var(--navy);
+  background-image:
+    radial-gradient(60rem 40rem at 12% -10%, rgb(47 94 168 / 0.55), transparent 60%),
+    radial-gradient(50rem 34rem at 92% 108%, rgb(47 94 168 / 0.35), transparent 62%),
+    linear-gradient(160deg, var(--navy-3), var(--navy) 55%, var(--navy-2));
+}
+
+/* Trama a griglia leggerissima per l'hero pubblico. */
+.trama-griglia {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 3rem 3rem;
+  mask-image: radial-gradient(70% 60% at 50% 30%, #000 30%, transparent 100%);
+}
+
+/* Sessione "Visualizza come": quando la striscia di avviso è presente, la
+   barra laterale e l'intestazione mobile — entrambe adesive — si spostano
+   verso il basso della sua altezza, invece di finirci sotto. La regola si
+   attiva da sola in base alla presenza della striscia, senza che il guscio
+   debba sapere se un'impersonazione è in corso. */
+:root {
+  --altezza-banner: 3rem;
+}
+
+.guscio-app:has(> .barra-impersonazione) .barra-laterale-fissa {
+  top: var(--altezza-banner);
+  height: calc(100dvh - var(--altezza-banner));
+}
+
+.guscio-app:has(> .barra-impersonazione) .barra-superiore-mobile {
+  top: var(--altezza-banner);
+}
+
+/* Barre di scorrimento sottili nelle aree dense (barra laterale, tabelle). */
+.scorrimento-sottile {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Segnaposto di caricamento. */
+@keyframes pulsazione-scheletro {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.scheletro {
+  background: var(--surface-muted);
+  animation: pulsazione-scheletro 1.6s ease-in-out infinite;
+}
+
+/* Comparsa morbida dei pannelli modali. */
+@keyframes comparsa-velo {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes comparsa-pannello {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.anima-velo {
+  animation: comparsa-velo 0.15s ease-out;
+}
+
+.anima-pannello {
+  animation: comparsa-pannello 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ==========================================================================
+   TABELLE ADATTIVE
+   --------------------------------------------------------------------------
+   Su desktop una tabella normale, scorrevole in orizzontale se serve.
+   Sotto 768px le tabelle marcate `.tabella-adattiva` si trasformano in un
+   elenco di schede "etichetta → valore": leggere una tabella a sei colonne
+   su un telefono, scorrendo di lato, è la soluzione peggiore (NN/g, "How to
+   Fit Big Tables on Small Screens"), mentre una scheda per riga resta
+   comprensibile senza nascondere nulla.
+   ========================================================================== */
+
+.tabella-guscio {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+@media (max-width: 47.999rem) {
+  .tabella-guscio:has(> .tabella-adattiva) {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .tabella-adattiva {
+    display: block;
+  }
+
+  .tabella-adattiva thead {
+    display: none;
+  }
+
+  .tabella-adattiva tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    border: 0;
+  }
+
+  .tabella-adattiva tbody tr {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+    background: var(--surface);
+    padding: 0.875rem 1rem;
+    box-shadow: var(--shadow-xs);
+  }
+
+  .tabella-adattiva tbody td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.3125rem 0;
+    text-align: right;
+  }
+
+  .tabella-adattiva tbody td[data-etichetta]::before {
+    content: attr(data-etichetta);
+    flex: 0 0 auto;
+    text-align: left;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+
+  /* La prima cella fa da titolo della scheda: niente etichetta, testo più
+     grande e a piena larghezza. */
+  .tabella-adattiva tbody td:first-child {
+    display: block;
+    text-align: left;
+    padding-top: 0;
+    padding-bottom: 0.5rem;
+    font-size: 0.9375rem;
+  }
+
+  /* Celle di sola azione: nessuna etichetta, contenuto allineato a destra. */
+  .tabella-adattiva tbody td:not([data-etichetta]):not(:first-child) {
+    justify-content: flex-end;
+    padding-top: 0.5rem;
+  }
 }

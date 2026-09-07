@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Upload } from "lucide-react";
+import { FileUp, Table2 } from "lucide-react";
 import { Field, Label, Select } from "@/components/ui/input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import {
   analizzaFile,
   estraiFoglio,
@@ -24,6 +26,7 @@ export function PassoCaricaFile({
 }) {
   const [analisiInCorso, setAnalisiInCorso] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
+  const [trascinamento, setTrascinamento] = useState(false);
 
   // Quando il file ha più fogli o l'intestazione non è sulla prima riga
   // (tipico degli export gestionali, con righe-titolo iniziali), non si può
@@ -48,11 +51,7 @@ export function PassoCaricaFile({
     onFileAnalizzato(foglio, nome);
   }
 
-  async function gestisciFile(evento: React.ChangeEvent<HTMLInputElement>) {
-    const file = evento.target.files?.[0];
-    evento.target.value = "";
-    if (!file) return;
-
+  async function processaFile(file: File) {
     setErrore(null);
     setFileGrezzo(null);
     setAnalisiInCorso(true);
@@ -85,6 +84,13 @@ export function PassoCaricaFile({
     }
   }
 
+  async function gestisciFile(evento: React.ChangeEvent<HTMLInputElement>) {
+    const file = evento.target.files?.[0];
+    evento.target.value = "";
+    if (!file) return;
+    await processaFile(file);
+  }
+
   const foglioScelto = fileGrezzo?.fogli[indiceFoglio];
 
   function anteprimaRiga(righe: unknown[][], indice: number): string {
@@ -100,15 +106,15 @@ export function PassoCaricaFile({
     : [];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       {richiedeCondominio && (
-        <Field>
-          <Label htmlFor="condominio_id">Condominio</Label>
-          <Select
-            id="condominio_id"
-            value={condominioId}
-            onChange={(e) => onCondominioChange?.(e.target.value)}
-          >
+        <Field
+          id="condominio_id"
+          label="Condominio di destinazione"
+          required
+          hint="Va scelto prima di caricare il file: le righe verranno importate qui."
+        >
+          <Select value={condominioId} onChange={(e) => onCondominioChange?.(e.target.value)}>
             <option value="" disabled>
               Seleziona condominio
             </option>
@@ -121,20 +127,51 @@ export function PassoCaricaFile({
         </Field>
       )}
 
-      <Field>
-        <Label htmlFor="file">File (.xlsx o .csv)</Label>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="file">File da importare</Label>
+
+        {/* L'etichetta è anche l'area di rilascio: il trascinamento è
+            un'aggiunta, il clic continua a funzionare da solo. */}
         <label
           htmlFor="file"
-          className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong px-4 py-8 text-sm text-muted-foreground hover:bg-surface-muted transition-colors aria-disabled:pointer-events-none aria-disabled:opacity-50"
+          onDragOver={(e) => {
+            if (!puoCaricare || analisiInCorso) return;
+            e.preventDefault();
+            setTrascinamento(true);
+          }}
+          onDragLeave={() => setTrascinamento(false)}
+          onDrop={(e) => {
+            if (!puoCaricare || analisiInCorso) return;
+            e.preventDefault();
+            setTrascinamento(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) void processaFile(file);
+          }}
+          className={cn(
+            "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-6 py-10 text-center transition-colors",
+            trascinamento
+              ? "border-accent bg-accent-subtle"
+              : "border-border-strong hover:border-muted-foreground/60 hover:bg-surface-muted/60",
+            (!puoCaricare || analisiInCorso) && "pointer-events-none opacity-55"
+          )}
           aria-disabled={!puoCaricare || analisiInCorso}
         >
-          <Upload className="size-4" />
-          {analisiInCorso
-            ? "Lettura in corso…"
-            : nomeFile
-              ? nomeFile
-              : "Trascina o scegli un file"}
+          <span
+            className="grid size-10 place-items-center rounded-xl bg-surface-muted text-muted-foreground"
+            aria-hidden="true"
+          >
+            <FileUp className="size-5" />
+          </span>
+          <span className="text-sm font-medium">
+            {analisiInCorso
+              ? "Lettura del file in corso…"
+              : nomeFile
+                ? nomeFile
+                : "Trascina qui il file o fai clic per sceglierlo"}
+          </span>
+          <span className="text-xs text-muted-foreground">Formati accettati: .xlsx e .csv</span>
         </label>
+
         <input
           id="file"
           type="file"
@@ -143,26 +180,27 @@ export function PassoCaricaFile({
           disabled={!puoCaricare || analisiInCorso}
           onChange={gestisciFile}
         />
-      </Field>
 
-      {richiedeCondominio && !condominioId && (
-        <p className="text-sm text-muted-foreground">
-          Seleziona prima un condominio.
-        </p>
-      )}
+        {richiedeCondominio && !condominioId && (
+          <p className="text-xs text-muted-foreground">
+            Seleziona prima un condominio per poter caricare il file.
+          </p>
+        )}
+      </div>
 
       {fileGrezzo && foglioScelto && (
-        <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
-          <p className="text-sm text-muted-foreground">
-            Abbiamo rilevato l&apos;intestazione automaticamente. Controlla che
-            foglio e riga siano corretti prima di continuare.
-          </p>
+        <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface-muted/40 p-4">
+          <div className="flex items-start gap-2.5">
+            <Table2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Abbiamo individuato l&apos;intestazione automaticamente. Controlla che foglio e riga
+              siano quelli giusti prima di continuare.
+            </p>
+          </div>
 
           {fileGrezzo.fogli.length > 1 && (
-            <Field>
-              <Label htmlFor="foglio">Foglio</Label>
+            <Field id="foglio" label="Foglio">
               <Select
-                id="foglio"
                 value={indiceFoglio}
                 onChange={(e) => {
                   const i = Number(e.target.value);
@@ -179,10 +217,8 @@ export function PassoCaricaFile({
             </Field>
           )}
 
-          <Field>
-            <Label htmlFor="riga_intestazione">Riga con le intestazioni</Label>
+          <Field id="riga_intestazione" label="Riga con le intestazioni">
             <Select
-              id="riga_intestazione"
               value={rigaIntestazione}
               onChange={(e) => setRigaIntestazione(Number(e.target.value))}
             >
@@ -195,7 +231,7 @@ export function PassoCaricaFile({
           </Field>
 
           {intestazioniAnteprima.length > 0 && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <p className="text-xs font-medium text-muted-foreground">
                 Colonne rilevate ({intestazioniAnteprima.length})
               </p>
@@ -203,7 +239,7 @@ export function PassoCaricaFile({
                 {intestazioniAnteprima.map((intestazione, i) => (
                   <span
                     key={i}
-                    className="rounded-md bg-surface-muted px-2 py-0.5 text-xs"
+                    className="rounded-md border border-border bg-surface px-2 py-0.5 text-xs"
                   >
                     {intestazione}
                   </span>
@@ -212,13 +248,16 @@ export function PassoCaricaFile({
             </div>
           )}
 
-          <Button onClick={() => conferma(estraiFoglio(foglioScelto, rigaIntestazione), nomeFile)}>
+          <Button
+            className="w-fit"
+            onClick={() => conferma(estraiFoglio(foglioScelto, rigaIntestazione), nomeFile)}
+          >
             Usa questo foglio
           </Button>
         </div>
       )}
 
-      {errore && <p className="text-sm text-danger">{errore}</p>}
+      <FormError>{errore}</FormError>
     </div>
   );
 }

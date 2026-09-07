@@ -1,11 +1,30 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, CalendarClock, Home, Landmark, Wallet } from "lucide-react";
+import { CalendarClock, Home, Landmark, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardHeader, CardTitle, StatCard } from "@/components/ui/card";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
+import {
+  Card,
+  CardHeader,
+  CardHeaderText,
+  CardTitle,
+  CardDescription,
+  Section,
+} from "@/components/ui/card";
+import { StatCard, StatGrid } from "@/components/ui/stat-card";
 import { StatoBadge } from "@/components/ui/badge";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, RowIcon } from "@/components/ui/table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+  RowIcon,
+  Vuoto,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 import { formatData, formatDataOra, formatMillesimi, formatValuta } from "@/lib/format";
 import { haQuota } from "@/lib/ruoli";
 import { ContoCorrenteForm } from "../conto-corrente-form";
@@ -98,7 +117,10 @@ export default async function CondominioDettaglioPage({
   );
   const totaleSpeseAnno = speseAnnoCorrente.reduce((somma, s) => somma + s.importo_totale, 0);
   const totaleNonIncassato = (spese ?? []).reduce((somma, s) => {
-    const ripartizioni = (s.ripartizioni ?? []) as { importo_dovuto: number; stato_pagamento: string }[];
+    const ripartizioni = (s.ripartizioni ?? []) as {
+      importo_dovuto: number;
+      stato_pagamento: string;
+    }[];
     return (
       somma +
       ripartizioni
@@ -139,212 +161,285 @@ export default async function CondominioDettaglioPage({
   const mostraFallbackMill = colonneMill.length === 0;
 
   return (
-    <div className="flex flex-col gap-8">
-      <Link
-        href="/admin/condomini"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-accent w-fit"
-      >
-        <ArrowLeft className="size-4" /> Condomini
-      </Link>
-
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              <RowIcon icon={Building2}>{condominio.nome}</RowIcon>
-            </h1>
-            <p className="text-sm text-muted-foreground pl-10.5">
-              {condominio.indirizzo}
-              {condominio.codice_fiscale ? ` · ${condominio.codice_fiscale}` : ""}
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
+    <PageBody>
+      <PageHeader
+        indietro={{ href: "/admin/condomini", label: "Condomìni" }}
+        titolo={condominio.nome}
+        descrizione={
+          <>
+            {condominio.indirizzo}
+            {condominio.codice_fiscale ? ` · C.F. ${condominio.codice_fiscale}` : ""}
+          </>
+        }
+        azioni={
+          <>
+            <AvvisoForm condominioId={condominio.id} destinatari={destinatariAvvisi} />
             <ModificaCondominioButton
               id={condominio.id}
               nome={condominio.nome}
               indirizzo={condominio.indirizzo}
               codiceFiscale={condominio.codice_fiscale ?? null}
             />
-            <TrasferisciCondominioButton />
-            <EliminaCondominioButton id={condominio.id} nome={condominio.nome} />
-          </div>
-        </div>
-      </Card>
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <StatGrid>
         <StatCard label="Unità" value={unita?.length ?? 0} icon={Home} />
         <StatCard
           label="Prossima assemblea"
-          value={prossimaAssemblea ? formatData(prossimaAssemblea.data_assemblea) : "-"}
+          value={prossimaAssemblea ? formatData(prossimaAssemblea.data_assemblea) : "—"}
           icon={CalendarClock}
+          hint={prossimaAssemblea ? undefined : "nessuna assemblea in programma"}
         />
-        <StatCard label="Spese anno corrente" value={formatValuta(totaleSpeseAnno)} icon={Wallet} />
-        <StatCard label="Da incassare" value={formatValuta(totaleNonIncassato)} icon={Landmark} />
-      </div>
+        <StatCard
+          label={`Spese ${annoCorrente}`}
+          value={formatValuta(totaleSpeseAnno)}
+          icon={Wallet}
+          hint={`${speseAnnoCorrente.length} ${speseAnnoCorrente.length === 1 ? "spesa" : "spese"} nell'anno`}
+        />
+        <StatCard
+          label="Da incassare"
+          value={formatValuta(totaleNonIncassato)}
+          icon={Landmark}
+          tono={totaleNonIncassato > 0 ? "warning" : "success"}
+        />
+      </StatGrid>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Avvisi ai condòmini</CardTitle>
-        </CardHeader>
-        <AvvisoForm condominioId={condominio.id} destinatari={destinatariAvvisi} />
-      </Card>
-
-      <div className="grid lg:grid-cols-2 gap-8 items-start">
-        <Card>
-          <CardHeader>
-            <CardTitle>Conto corrente</CardTitle>
-          </CardHeader>
-          <ContoCorrenteForm condominio={condominio} />
-        </Card>
-
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <CardTitle>Assemblee</CardTitle>
-            <Link href="/admin/assemblee" className="text-sm text-accent hover:underline">
-              Vedi tutte
-            </Link>
-          </div>
-          {assemblee?.length ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Stato</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {assemblee.slice(0, 5).map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell className="font-medium">
-                      <Link href={`/admin/assemblee/${a.id}`} className="hover:text-accent">
-                        {formatDataOra(a.data_assemblea)}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="capitalize">{a.tipo}</TableCell>
-                    <TableCell>
-                      <StatoBadge tipo="stato_assemblea" valore={a.stato} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <EmptyState icon={CalendarClock} title="Nessuna assemblea per questo condominio" />
-          )}
-        </Card>
-      </div>
-
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <CardTitle>Spese recenti</CardTitle>
-          <Link href="/admin/spese" className="text-sm text-accent hover:underline">
-            Vedi tutte
-          </Link>
-        </div>
-        {spese?.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Descrizione</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Importo</TableHead>
-                <TableHead>Data</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {spese.slice(0, 5).map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-medium">
-                    <Link href={`/admin/spese/${s.id}`} className="hover:text-accent">
-                      <RowIcon icon={Wallet}>{s.descrizione}</RowIcon>
-                    </Link>
-                  </TableCell>
-                  <TableCell>{s.categoria}</TableCell>
-                  <TableCell>{formatValuta(s.importo_totale)}</TableCell>
-                  <TableCell>{formatData(s.data_spesa)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <EmptyState icon={Wallet} title="Nessuna spesa per questo condominio" />
-        )}
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Nuova unità</CardTitle>
-        </CardHeader>
-        <NuovaUnitaForm condominioId={condominio.id} tabelle={colonneMill} />
-      </Card>
-
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <CardTitle>Unità e occupanti</CardTitle>
-        </div>
-        {unita?.length ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Unità</TableHead>
-                <TableHead>Nominativo</TableHead>
-                <TableHead>Qualifica</TableHead>
-                <TableHead>Quota</TableHead>
-                {mostraFallbackMill ? (
-                  <TableHead>Millesimi</TableHead>
-                ) : (
-                  colonneMill.map((t) => (
-                    <TableHead key={t.id}>Millesimi {t.nome}</TableHead>
-                  ))
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {righeUnita.map((r, i) => (
-                <TableRow key={`${r.unita.id}-${i}`}>
-                  <TableCell className="font-medium">
-                    {r.primo && (
-                      <Link href={`/admin/unita/${r.unita.id}`} className="hover:text-accent">
-                        <RowIcon icon={Home}>{r.unita.identificativo}</RowIcon>
-                      </Link>
+      <div className="grid gap-6 lg:grid-cols-3 lg:items-start">
+        {/* Colonna principale: i dati che si consultano di continuo. */}
+        <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+          <Section
+            titolo="Unità e occupanti"
+            descrizione="Una riga per ogni soggetto attivo. Apri un'unità per gestirne i soggetti e i millesimi."
+            azioni={<NuovaUnitaForm condominioId={condominio.id} tabelle={colonneMill} />}
+          >
+            {unita?.length ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Unità</TableHead>
+                    <TableHead>Nominativo</TableHead>
+                    <TableHead>Qualifica</TableHead>
+                    <TableHead numeric>Quota</TableHead>
+                    {mostraFallbackMill ? (
+                      <TableHead numeric>Millesimi</TableHead>
+                    ) : (
+                      colonneMill.map((t) => (
+                        <TableHead key={t.id} numeric>
+                          Mill. {t.nome}
+                        </TableHead>
+                      ))
                     )}
-                  </TableCell>
-                  <TableCell>{r.occupante?.anagrafiche?.nominativo ?? "—"}</TableCell>
-                  <TableCell>
-                    {r.occupante
-                      ? ETICHETTA_TIPO[r.occupante.tipo_soggetto] ?? r.occupante.tipo_soggetto
-                      : "—"}
-                  </TableCell>
-                  <TableCell>
-                    {r.occupante &&
-                    haQuota(r.occupante.tipo_soggetto) &&
-                    r.occupante.quota_possesso !== 100
-                      ? `${r.occupante.quota_possesso}%`
-                      : "—"}
-                  </TableCell>
-                  {mostraFallbackMill ? (
-                    <TableCell>
-                      {r.primo ? formatMillesimi(r.unita.millesimi_proprieta) : ""}
-                    </TableCell>
-                  ) : (
-                    colonneMill.map((t) => {
-                      const v = valoriPerUnita.get(r.unita.id)?.get(t.id);
-                      return (
-                        <TableCell key={t.id}>
-                          {r.primo ? (v != null ? formatMillesimi(v) : "—") : ""}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {righeUnita.map((r, i) => (
+                    <TableRow key={`${r.unita.id}-${i}`}>
+                      <TableCell className="font-medium">
+                        {r.primo ? (
+                          <Link
+                            href={`/admin/unita/${r.unita.id}`}
+                            className="rounded transition-colors hover:text-accent-ink"
+                          >
+                            <RowIcon icon={Home}>{r.unita.identificativo}</RowIcon>
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground md:sr-only">
+                            {r.unita.identificativo}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell etichetta="Nominativo">
+                        {r.occupante?.anagrafiche?.nominativo ?? <Vuoto />}
+                      </TableCell>
+                      <TableCell etichetta="Qualifica">
+                        {r.occupante ? (
+                          ETICHETTA_TIPO[r.occupante.tipo_soggetto] ?? r.occupante.tipo_soggetto
+                        ) : (
+                          <Vuoto />
+                        )}
+                      </TableCell>
+                      <TableCell etichetta="Quota" numeric>
+                        {r.occupante &&
+                        haQuota(r.occupante.tipo_soggetto) &&
+                        r.occupante.quota_possesso !== 100 ? (
+                          `${r.occupante.quota_possesso}%`
+                        ) : (
+                          <Vuoto />
+                        )}
+                      </TableCell>
+                      {mostraFallbackMill ? (
+                        <TableCell etichetta="Millesimi" numeric>
+                          {r.primo ? formatMillesimi(r.unita.millesimi_proprieta) : ""}
                         </TableCell>
-                      );
-                    })
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <EmptyState icon={Home} title="Nessuna unità in questo condominio" />
-        )}
-      </Card>
-    </div>
+                      ) : (
+                        colonneMill.map((t) => {
+                          const v = valoriPerUnita.get(r.unita.id)?.get(t.id);
+                          return (
+                            <TableCell key={t.id} etichetta={`Mill. ${t.nome}`} numeric>
+                              {r.primo ? v != null ? formatMillesimi(v) : <Vuoto /> : ""}
+                            </TableCell>
+                          );
+                        })
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <EmptyState
+                icon={Home}
+                title="Nessuna unità in questo condominio"
+                description="Aggiungi le unità una alla volta oppure importale in blocco da un file .xlsx o .csv."
+                action={
+                  <>
+                    <NuovaUnitaForm condominioId={condominio.id} tabelle={colonneMill} />
+                    <Button href="/admin/importa/unita" variant="secondary" size="sm">
+                      Importa unità
+                    </Button>
+                  </>
+                }
+              />
+            )}
+          </Section>
+
+          <Section
+            titolo="Spese recenti"
+            azioni={
+              <Button href="/admin/spese" variant="ghost" size="sm">
+                Vedi tutte
+              </Button>
+            }
+          >
+            {spese?.length ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Descrizione</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead numeric>Importo</TableHead>
+                    <TableHead>Data</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {spese.slice(0, 5).map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="font-medium">
+                        <Link
+                          href={`/admin/spese/${s.id}`}
+                          className="rounded transition-colors hover:text-accent-ink"
+                        >
+                          <RowIcon icon={Wallet}>{s.descrizione}</RowIcon>
+                        </Link>
+                      </TableCell>
+                      <TableCell etichetta="Categoria">{s.categoria}</TableCell>
+                      <TableCell etichetta="Importo" numeric className="font-medium">
+                        {formatValuta(s.importo_totale)}
+                      </TableCell>
+                      <TableCell etichetta="Data">{formatData(s.data_spesa)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <EmptyState
+                compatta
+                icon={Wallet}
+                title="Nessuna spesa registrata"
+                description="Le spese di questo condominio compariranno qui."
+                action={
+                  <Button href="/admin/spese" size="sm" variant="secondary">
+                    Registra una spesa
+                  </Button>
+                }
+              />
+            )}
+          </Section>
+        </div>
+
+        {/* Colonna laterale: dati di configurazione, consultati di rado. */}
+        <div className="flex min-w-0 flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardHeaderText>
+                <CardTitle>Conto corrente</CardTitle>
+                <CardDescription>
+                  Usato nei documenti e negli avvisi di pagamento.
+                </CardDescription>
+              </CardHeaderText>
+            </CardHeader>
+            <ContoCorrenteForm condominio={condominio} />
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardHeaderText>
+                <CardTitle>Assemblee</CardTitle>
+              </CardHeaderText>
+              <Button href="/admin/assemblee" variant="ghost" size="sm">
+                Vedi tutte
+              </Button>
+            </CardHeader>
+
+            {assemblee?.length ? (
+              <ul className="flex flex-col divide-y divide-border">
+                {assemblee.slice(0, 5).map((a) => (
+                  <li key={a.id} className="py-3 first:pt-0 last:pb-0">
+                    <Link
+                      href={`/admin/assemblee/${a.id}`}
+                      className="group flex flex-col gap-1.5 rounded"
+                    >
+                      <span className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-medium transition-colors group-hover:text-accent-ink">
+                          {formatDataOra(a.data_assemblea)}
+                        </span>
+                        <StatoBadge tipo="stato_assemblea" valore={a.stato} />
+                      </span>
+                      <span className="text-xs capitalize text-muted-foreground">{a.tipo}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                compatta
+                icon={CalendarClock}
+                title="Nessuna assemblea"
+                description="Convoca la prima assemblea per questo condominio."
+                action={
+                  <Button href="/admin/assemblee" size="sm" variant="secondary">
+                    Convoca assemblea
+                  </Button>
+                }
+              />
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {/* Azioni fuori dal flusso ordinario: separate e in fondo, perché una
+          non è ancora disponibile e l'altra è irreversibile. */}
+      <Section
+        titolo="Gestione avanzata"
+        descrizione="Operazioni che riguardano il condominio nel suo insieme."
+      >
+        <Card bordo="pericolo">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className="text-sm font-semibold">Passaggio di consegne o chiusura</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Trasferisci il condominio a un altro amministratore oppure eliminalo con tutti i
+                dati collegati.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <TrasferisciCondominioButton />
+              <EliminaCondominioButton id={condominio.id} nome={condominio.nome} />
+            </div>
+          </div>
+        </Card>
+      </Section>
+    </PageBody>
   );
 }

@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { CheckCircle2, LinkIcon, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Label } from "@/components/ui/input";
+import { AuthShell, AuthLink } from "@/components/auth-shell";
+import { Field } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export default function ReimpostaPasswordPage() {
@@ -76,70 +78,99 @@ export default function ReimpostaPasswordPage() {
 
   if (fatto) {
     return (
-      <div className="bg-auth flex flex-1 items-center justify-center px-4 py-12">
-        <Card className="w-full max-w-sm rounded-3xl text-center flex flex-col gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">Password aggiornata</h1>
-          <p className="text-sm text-muted-foreground">Ti reindirizziamo al login…</p>
-        </Card>
-      </div>
+      <AuthShell
+        titolo="Password aggiornata"
+        sottotitolo="Da ora puoi accedere con la nuova password."
+      >
+        <div className="flex flex-col items-center gap-4 text-center">
+          <span
+            className="grid size-12 place-items-center rounded-2xl bg-success-bg text-success"
+            aria-hidden="true"
+          >
+            <CheckCircle2 className="size-6" />
+          </span>
+          <p
+            role="status"
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            Ti riportiamo all&apos;accesso…
+          </p>
+        </div>
+      </AuthShell>
     );
   }
 
   if (!pronto && scaduto) {
     return (
-      <div className="bg-auth flex flex-1 items-center justify-center px-4 py-12">
-        <Card className="w-full max-w-sm rounded-3xl text-center flex flex-col gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">Link non valido</h1>
-          <p className="text-sm text-muted-foreground">
-            Il link è scaduto o non è valido. Richiedine uno nuovo.
-          </p>
-          <Link href="/recupera-password" className="font-medium text-accent">
+      <AuthShell
+        titolo="Link non valido"
+        sottotitolo="Il link è scaduto oppure è già stato usato. Richiedine uno nuovo: ne bastano pochi secondi."
+        piede={
+          <>
+            Ti sei ricordato la password? <AuthLink href="/login">Accedi</AuthLink>
+          </>
+        }
+      >
+        <div className="flex flex-col items-center gap-5 text-center">
+          <span
+            className="grid size-12 place-items-center rounded-2xl bg-warning-bg text-warning"
+            aria-hidden="true"
+          >
+            <LinkIcon className="size-6" />
+          </span>
+          <Button href="/recupera-password" full>
             Richiedi un nuovo link
-          </Link>
-        </Card>
-      </div>
+          </Button>
+        </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="bg-auth flex flex-1 items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-sm rounded-3xl">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">Scegli una nuova password</h1>
+    <AuthShell
+      titolo="Scegli una nuova password"
+      sottotitolo={
+        pronto
+          ? "Deve avere almeno 8 caratteri. Scrivila due volte per sicurezza."
+          : "Stiamo verificando il link ricevuto per email…"
+      }
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field id="password" label="Nuova password" required hint="Almeno 8 caratteri.">
+          <PasswordInput
+            name="password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={!pronto}
+          />
+        </Field>
 
-          <Field>
-            <Label htmlFor="password">Nuova password</Label>
-            <Input
-              id="password"
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={!pronto}
-            />
-          </Field>
+        <Field id="conferma" label="Conferma password" required>
+          <PasswordInput
+            name="conferma"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={conferma}
+            onChange={(e) => setConferma(e.target.value)}
+            disabled={!pronto}
+          />
+        </Field>
 
-          <Field>
-            <Label htmlFor="conferma">Conferma password</Label>
-            <Input
-              id="conferma"
-              type="password"
-              required
-              minLength={8}
-              value={conferma}
-              onChange={(e) => setConferma(e.target.value)}
-              disabled={!pronto}
-            />
-          </Field>
+        <FormError>{errore}</FormError>
 
-          {errore && <p className="text-sm text-danger">{errore}</p>}
-
-          <Button type="submit" pending={pending} disabled={!pronto} className="mt-2 w-full">
-            {pronto ? (pending ? "Salvataggio…" : "Salva nuova password") : "Verifica link in corso…"}
-          </Button>
-        </form>
-      </Card>
-    </div>
+        <Button type="submit" pending={pending} disabled={!pronto} full size="lg" className="mt-1">
+          {pronto
+            ? pending
+              ? "Salvataggio…"
+              : "Salva la nuova password"
+            : "Verifica del link in corso…"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

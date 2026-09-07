@@ -3,52 +3,60 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { login } from "./actions";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Label } from "@/components/ui/input";
+import { AuthShell, AuthLink } from "@/components/auth-shell";
+import { Field, Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
   const [stato, action, pending] = useActionState(login, undefined);
 
   return (
-    <div className="bg-auth flex flex-1 items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-sm rounded-3xl">
-        <form action={action} className="flex flex-col gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Accedi al portale
-          </h1>
+    <AuthShell
+      titolo="Accedi al portale"
+      sottotitolo="Inserisci le credenziali con cui ti sei registrato."
+      piede={
+        <>
+          Non hai un account? <AuthLink href="/registrazione">Registrati</AuthLink>
+        </>
+      }
+    >
+      <form action={action} className="flex flex-col gap-4">
+        <Field id="email" label="Email" required>
+          <Input
+            name="email"
+            type="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder="nome@esempio.it"
+            required
+          />
+        </Field>
 
-          <Field>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" required />
-          </Field>
-
-          <Field>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link href="/recupera-password" className="text-sm text-accent">
-                Password dimenticata?
-              </Link>
-            </div>
-            <Input id="password" name="password" type="password" required />
-          </Field>
-
-          {stato?.errore && (
-            <p className="text-sm text-danger">{stato.errore}</p>
-          )}
-
-          <Button type="submit" pending={pending} className="mt-2 w-full">
-            {pending ? "Accesso in corso…" : "Accedi"}
-          </Button>
-
-          <p className="text-sm text-center text-muted-foreground">
-            Non hai un account?{" "}
-            <Link href="/registrazione" className="font-medium text-accent">
-              Registrati
+        <Field
+          id="password"
+          label="Password"
+          required
+          action={
+            <Link
+              href="/recupera-password"
+              className="rounded text-sm font-medium text-accent-ink underline-offset-4 hover:underline"
+            >
+              Password dimenticata?
             </Link>
-          </p>
-        </form>
-      </Card>
-    </div>
+          }
+        >
+          <PasswordInput name="password" autoComplete="current-password" required />
+        </Field>
+
+        <FormError>{stato?.errore}</FormError>
+
+        <Button type="submit" pending={pending} full size="lg" className="mt-1">
+          {pending ? "Accesso in corso…" : "Accedi"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 import { aggiornaCondominio } from "../actions";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Label } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
+import { Field, Input } from "@/components/ui/input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export function ModificaCondominioButton({
@@ -52,51 +53,57 @@ export function ModificaCondominioButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={apri}
-        title="Modifica nome, indirizzo e codice fiscale"
-        className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
-      >
-        <Pencil className="size-4" /> Modifica
-      </button>
+      <Button variant="secondary" onClick={apri}>
+        <Pencil className="size-4" aria-hidden="true" />
+        Modifica
+      </Button>
 
-      {aperto && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => !pending && setAperto(false)}
+      <Dialog
+        aperto={aperto}
+        onChiudi={() => setAperto(false)}
+        bloccato={pending}
+        titolo="Modifica condominio"
+        descrizione="Nome, indirizzo e codice fiscale del condominio."
+        footer={
+          <>
+            <Button variant="ghost" disabled={pending} onClick={() => setAperto(false)}>
+              Annulla
+            </Button>
+            <Button pending={pending} onClick={salva}>
+              Salva modifiche
+            </Button>
+          </>
+        }
+      >
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            salva();
+          }}
         >
-          <Card className="w-full max-w-sm gap-4" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm font-semibold">Modifica condominio</p>
-            <Field>
-              <Label htmlFor="mod_nome">Nome</Label>
-              <Input id="mod_nome" value={n} onChange={(e) => setN(e.target.value)} />
-            </Field>
-            <Field>
-              <Label htmlFor="mod_indirizzo">Indirizzo</Label>
-              <Input id="mod_indirizzo" value={ind} onChange={(e) => setInd(e.target.value)} />
-            </Field>
-            <Field>
-              <Label htmlFor="mod_cf">Codice fiscale (opzionale)</Label>
-              <Input id="mod_cf" value={cf} onChange={(e) => setCf(e.target.value)} />
-            </Field>
-            {errore && <p className="text-sm text-danger">{errore}</p>}
-            <div className="flex gap-3">
-              <Button type="button" pending={pending} onClick={salva}>
-                Salva
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={pending}
-                onClick={() => setAperto(false)}
-              >
-                Annulla
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
+          <Field id="mod_nome" label="Nome" required>
+            <Input value={n} onChange={(e) => setN(e.target.value)} required />
+          </Field>
+          <Field id="mod_indirizzo" label="Indirizzo" required>
+            <Input value={ind} onChange={(e) => setInd(e.target.value)} required />
+          </Field>
+          <Field id="mod_cf" label="Codice fiscale" hint="Facoltativo.">
+            <Input
+              value={cf}
+              onChange={(e) => setCf(e.target.value)}
+              autoCapitalize="characters"
+              spellCheck={false}
+            />
+          </Field>
+          <FormError>{errore}</FormError>
+          {/* Invio da tastiera: il pulsante di conferma visibile sta nel piè
+              di pagina della finestra, questo serve solo al tasto Invio. */}
+          <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
+            Salva
+          </button>
+        </form>
+      </Dialog>
     </>
   );
 }

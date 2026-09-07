@@ -1,13 +1,20 @@
 "use client";
 
 import { useActionState } from "react";
+import { Lock, Play } from "lucide-react";
 import { apriVotazione, chiudiVotazione } from "./actions";
 import type { PuntoOdg } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Badge, StatoBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FormError } from "@/components/ui/alert";
 import { CerchioVotiLive } from "@/components/ui/cerchio-voti";
 import { formatMillesimi } from "@/lib/format";
+
+const ETICHETTA_MAGGIORANZA: Record<string, string> = {
+  semplice: "maggioranza semplice",
+  qualificata_intervenuti: "maggioranza qualificata degli intervenuti",
+};
 
 export function PuntoOdgCard({
   punto,
@@ -28,13 +35,14 @@ export function PuntoOdgCard({
   const votazioneAperta = punto.stato_votazione === "aperta";
 
   return (
-    <Card className="gap-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs text-muted-foreground">
-            Punto {punto.numero_punto} · maggioranza {punto.tipo_maggioranza}
-          </p>
-          <p className="font-medium">{punto.descrizione}</p>
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Punto {punto.numero_punto} ·{" "}
+            {ETICHETTA_MAGGIORANZA[punto.tipo_maggioranza] ?? punto.tipo_maggioranza}
+          </span>
+          <h3 className="text-base font-semibold leading-snug text-pretty">{punto.descrizione}</h3>
         </div>
         {votazioneConclusa ? (
           <StatoBadge tipo="esito" valore={punto.esito} />
@@ -44,17 +52,18 @@ export function PuntoOdgCard({
       </div>
 
       {nonAncoraAperta && (
-        <form action={azioneApri}>
+        <form action={azioneApri} className="mt-4 flex flex-col items-start gap-1">
           <input type="hidden" name="punto_id" value={punto.id} />
           <input type="hidden" name="assemblea_id" value={assembleaId} />
           <Button type="submit" size="sm" pending={pendingApri}>
-            Apri votazione
+            <Play className="size-4" aria-hidden="true" />
+            Apri la votazione
           </Button>
         </form>
       )}
 
       {(votazioneAperta || votazioneConclusa) && (
-        <div className="flex flex-wrap items-center gap-4 rounded-xl bg-surface-muted/50 p-4">
+        <div className="mt-4 flex flex-col gap-5 rounded-xl border border-border bg-surface-muted/40 p-4 sm:flex-row sm:items-center sm:gap-6">
           <CerchioVotiLive
             puntoId={punto.id}
             millesimiTotali={millesimiTotali}
@@ -66,32 +75,38 @@ export function PuntoOdgCard({
             size={104}
           />
 
-          <div className="flex flex-1 min-w-[180px] flex-col gap-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
             {votazioneConclusa && (
-              <Badge variant="accent" className="w-fit">
-                Quorum edificio {formatMillesimi(punto.esito_quorum_totale ?? 0)}
-              </Badge>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm text-muted-foreground">Quorum dell&apos;edificio</span>
+                <Badge variant="accent" className="w-fit">
+                  <span className="cifre">
+                    {formatMillesimi(punto.esito_quorum_totale ?? 0)}
+                  </span>{" "}
+                  millesimi
+                </Badge>
+              </div>
             )}
 
             {votazioneAperta && (
-              <form action={azioneChiudi}>
+              <form action={azioneChiudi} className="flex flex-col items-start gap-1">
                 <input type="hidden" name="punto_id" value={punto.id} />
                 <input type="hidden" name="assemblea_id" value={assembleaId} />
                 <input type="hidden" name="condominio_id" value={condominioId} />
                 <Button type="submit" size="sm" variant="secondary" pending={pendingChiudi}>
-                  Chiudi votazione
+                  <Lock className="size-4" aria-hidden="true" />
+                  Chiudi la votazione
                 </Button>
+                <p className="text-xs text-muted-foreground">
+                  Alla chiusura l&apos;esito viene calcolato e non sarà più possibile votare.
+                </p>
               </form>
             )}
           </div>
         </div>
       )}
 
-      {(statoApri?.errore || statoChiudi?.errore) && (
-        <p className="text-sm text-danger">
-          {statoApri?.errore ?? statoChiudi?.errore}
-        </p>
-      )}
+      <FormError className="mt-3">{statoApri?.errore ?? statoChiudi?.errore}</FormError>
     </Card>
   );
 }

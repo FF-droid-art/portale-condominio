@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
-import { ListChecks, Video } from "lucide-react";
+import { ListChecks, Users, Video } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
 import type { PuntoOdg, SceltaVoto } from "@/lib/types";
-import { Card } from "@/components/ui/card";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
+import { Card, CardHeader, CardHeaderText, CardTitle, CardDescription, Section } from "@/components/ui/card";
 import { Badge, StatoBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Alert } from "@/components/ui/alert";
 import { formatDataOra, formatMillesimi } from "@/lib/format";
 import { VotoForm } from "./voto-form";
 import { DelegaForm } from "./delega-form";
@@ -111,177 +113,224 @@ export default async function AssembleaCondominoDettaglioPage({
     votiUtente = data ?? [];
   }
 
+  const nomeCondominio = (assemblea.condominio as unknown as { nome: string } | null)?.nome;
+  const puntiDaVotare = puntiOdg.filter(
+    (p) =>
+      p.stato_votazione === "aperta" &&
+      unitaVotabili.some((u) => !votiUtente.some((v) => v.punto_id === p.id && v.unita_id === u.id))
+  ).length;
+
   return (
-    <div className="flex flex-col gap-8">
-      <Card>
-        <p className="text-sm text-muted-foreground">
-          {(assemblea.condominio as unknown as { nome: string } | null)?.nome}
-        </p>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-3xl font-bold tracking-tight capitalize">
-            Assemblea {assemblea.tipo}
-          </h1>
-          <StatoBadge tipo="stato_assemblea" valore={assemblea.stato} />
-        </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          {formatDataOra(assemblea.data_assemblea)}
-        </p>
-        {assemblea.link_videoconferenza && (
-          <Button
-            href={assemblea.link_videoconferenza}
-            target="_blank"
-            rel="noopener noreferrer"
-            size="sm"
-            className="w-fit mt-3"
-          >
-            <Video className="size-4" />
-            Partecipa online
-          </Button>
-        )}
-      </Card>
+    <PageBody>
+      <PageHeader
+        indietro={{ href: "/area-riservata/assemblee", label: "Assemblee" }}
+        eyebrow={nomeCondominio}
+        titolo={<span className="capitalize">Assemblea {assemblea.tipo}</span>}
+        descrizione={formatDataOra(assemblea.data_assemblea)}
+        meta={<StatoBadge tipo="stato_assemblea" valore={assemblea.stato} />}
+        azioni={
+          assemblea.link_videoconferenza ? (
+            <Button
+              href={assemblea.link_videoconferenza}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Video className="size-4" aria-hidden="true" />
+              Partecipa online
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {puntiDaVotare > 0 && (
+        <Alert tono="info" titolo="C'è una votazione aperta">
+          {puntiDaVotare === 1
+            ? "Un punto all'ordine del giorno è in votazione e non hai ancora espresso il tuo voto."
+            : `${puntiDaVotare} punti all'ordine del giorno sono in votazione e non hai ancora espresso il tuo voto.`}
+        </Alert>
+      )}
 
       {unitaProprie.length > 0 && (
-        <Card className="gap-4">
-          <h2 className="text-lg font-medium">Deleghe</h2>
-          <p className="text-sm text-muted-foreground -mt-2">
-            Non puoi partecipare all&apos;assemblea? Delega il voto della tua unità a un altro
-            condomino con diritto di voto.
-          </p>
+        <Card>
+          <CardHeader>
+            <CardHeaderText>
+              <CardTitle>Deleghe</CardTitle>
+              <CardDescription>
+                Non puoi partecipare all&apos;assemblea? Delega il voto della tua unità a un altro
+                condòmino con diritto di voto: potrai revocare la delega finché l&apos;assemblea
+                non è conclusa.
+              </CardDescription>
+            </CardHeaderText>
+          </CardHeader>
 
-          {mieDelegheDate.length > 0 && (
-            <ul className="flex flex-col gap-2">
-              {mieDelegheDate.map((d) => {
-                const delegato = d.utente_delegato as unknown as { nome: string; cognome: string } | null;
-                const unitaDelegante = d.unita as unknown as { identificativo: string } | null;
-                return (
-                  <li
-                    key={d.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-muted/50 p-3 text-sm"
-                  >
-                    <span>
-                      <strong>{unitaDelegante?.identificativo}</strong> delegata a{" "}
-                      {delegato?.nome} {delegato?.cognome}
-                    </span>
-                    <RevocaDelegaButton delegaId={d.id} assembleaId={assemblea.id} />
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <div className="flex flex-col gap-5">
+            {mieDelegheDate.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {mieDelegheDate.map((d) => {
+                  const delegato = d.utente_delegato as unknown as {
+                    nome: string;
+                    cognome: string;
+                  } | null;
+                  const unitaDelegante = d.unita as unknown as { identificativo: string } | null;
+                  return (
+                    <li
+                      key={d.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/50 px-4 py-3 text-sm"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span>
+                          <strong className="font-semibold">
+                            {unitaDelegante?.identificativo}
+                          </strong>{" "}
+                          delegata a {delegato?.nome} {delegato?.cognome}
+                        </span>
+                      </span>
+                      <RevocaDelegaButton
+                        delegaId={d.id}
+                        assembleaId={assemblea.id}
+                        unitaLabel={unitaDelegante?.identificativo}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
 
-          {unitaDelegate.length > 0 && (
-            <p className="text-sm text-accent">
-              Voti anche per delega di: {unitaDelegate.map((u) => u.identificativo).join(", ")}
-            </p>
-          )}
+            {unitaDelegate.length > 0 && (
+              <Alert tono="info">
+                Voti anche per delega di:{" "}
+                <strong>{unitaDelegate.map((u) => u.identificativo).join(", ")}</strong>
+              </Alert>
+            )}
 
-          <DelegaForm
-            assembleaId={assemblea.id}
-            unitaDelegabili={unitaDelegabili.filter((u) => !delegheGiaDate.has(u.id))}
-            candidati={candidatiDelega.map((c) => ({
-              utenteId: c.utente_id,
-              nome: c.nome,
-              cognome: c.cognome,
-              unitaId: c.unita_id,
-              identificativo: c.identificativo,
-            }))}
-          />
+            <DelegaForm
+              assembleaId={assemblea.id}
+              unitaDelegabili={unitaDelegabili.filter((u) => !delegheGiaDate.has(u.id))}
+              candidati={candidatiDelega.map((c) => ({
+                utenteId: c.utente_id,
+                nome: c.nome,
+                cognome: c.cognome,
+                unitaId: c.unita_id,
+                identificativo: c.identificativo,
+              }))}
+            />
+          </div>
         </Card>
       )}
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">Punti all&apos;ordine del giorno</h2>
-
+      <Section
+        titolo="Punti all'ordine del giorno"
+        descrizione={
+          puntiOdg.length
+            ? "I risultati si aggiornano da soli mentre gli altri condòmini votano."
+            : undefined
+        }
+      >
         {!puntiOdg.length && (
           <EmptyState
             icon={ListChecks}
             title="Nessun punto all'ordine del giorno"
-            description="L'amministratore non ha ancora pubblicato punti da votare."
+            description="L'amministratore non ha ancora pubblicato i punti da votare per questa assemblea."
           />
         )}
 
-        {puntiOdg.map((punto) => {
-          const votazioneAperta = punto.stato_votazione === "aperta";
-          const votazioneConclusa = punto.stato_votazione === "chiusa" && punto.esito !== null;
-          const nonAncoraAperta = punto.stato_votazione === "chiusa" && punto.esito === null;
+        <div className="flex flex-col gap-4">
+          {puntiOdg.map((punto) => {
+            const votazioneAperta = punto.stato_votazione === "aperta";
+            const votazioneConclusa = punto.stato_votazione === "chiusa" && punto.esito !== null;
+            const nonAncoraAperta = punto.stato_votazione === "chiusa" && punto.esito === null;
 
-          return (
-            <Card key={punto.id} className="gap-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Punto {punto.numero_punto}</p>
-                  <p className="font-medium">{punto.descrizione}</p>
-                </div>
-                {votazioneConclusa ? (
-                  <StatoBadge tipo="esito" valore={punto.esito} />
-                ) : (
-                  <StatoBadge tipo="stato_votazione" valore={punto.stato_votazione} />
-                )}
-              </div>
-
-              {(votazioneAperta || votazioneConclusa) && (
-                <div className="flex flex-wrap items-center gap-4 rounded-xl bg-surface-muted/50 p-4">
-                  <CerchioVotiLive
-                    puntoId={punto.id}
-                    millesimiTotali={millesimiTotali}
-                    tallyIniziale={{
-                      favorevole: votazioneConclusa
-                        ? punto.esito_favorevole ?? 0
-                        : punto.tally_favorevole,
-                      contrario: votazioneConclusa
-                        ? punto.esito_contrario ?? 0
-                        : punto.tally_contrario,
-                      astenuto: votazioneConclusa
-                        ? punto.esito_astenuto ?? 0
-                        : punto.tally_astenuto,
-                    }}
-                    size={104}
-                  />
-
-                  <div className="flex flex-1 min-w-[220px] flex-col gap-2">
-                    {votazioneAperta && !unitaVotabili.length && (
-                      <p className="text-sm text-muted-foreground">
-                        Nessuna unità di tua proprietà (o delegata) in questo condominio.
-                      </p>
-                    )}
-
-                    {votazioneAperta &&
-                      unitaVotabili.map((u) => {
-                        const votoEsistente = votiUtente.find(
-                          (v) => v.punto_id === punto.id && v.unita_id === u.id
-                        );
-                        return (
-                          <VotoForm
-                            key={u.id}
-                            puntoId={punto.id}
-                            unitaId={u.id}
-                            assembleaId={assemblea.id}
-                            unitaLabel={
-                              propriIds.has(u.id) ? u.identificativo : `${u.identificativo} (delega)`
-                            }
-                            votoAttuale={votoEsistente?.scelta}
-                          />
-                        );
-                      })}
-
-                    {votazioneConclusa && (
-                      <Badge variant="accent" className="w-fit">
-                        Quorum edificio {formatMillesimi(punto.esito_quorum_totale ?? 0)}
-                      </Badge>
-                    )}
+            return (
+              <Card key={punto.id}>
+                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Punto {punto.numero_punto}
+                    </span>
+                    <h3 className="text-base font-semibold leading-snug text-pretty">
+                      {punto.descrizione}
+                    </h3>
                   </div>
+                  {votazioneConclusa ? (
+                    <StatoBadge tipo="esito" valore={punto.esito} />
+                  ) : (
+                    <StatoBadge tipo="stato_votazione" valore={punto.stato_votazione} />
+                  )}
                 </div>
-              )}
 
-              {nonAncoraAperta && (
-                <p className="text-sm text-muted-foreground">
-                  La votazione non è ancora stata aperta dall&apos;amministratore.
-                </p>
-              )}
-            </Card>
-          );
-        })}
-      </section>
-    </div>
+                {(votazioneAperta || votazioneConclusa) && (
+                  <div className="mt-4 flex flex-col gap-5 rounded-xl border border-border bg-surface-muted/40 p-4 sm:flex-row sm:items-start sm:gap-6">
+                    <CerchioVotiLive
+                      puntoId={punto.id}
+                      millesimiTotali={millesimiTotali}
+                      tallyIniziale={{
+                        favorevole: votazioneConclusa
+                          ? punto.esito_favorevole ?? 0
+                          : punto.tally_favorevole,
+                        contrario: votazioneConclusa
+                          ? punto.esito_contrario ?? 0
+                          : punto.tally_contrario,
+                        astenuto: votazioneConclusa
+                          ? punto.esito_astenuto ?? 0
+                          : punto.tally_astenuto,
+                      }}
+                      size={104}
+                    />
+
+                    <div className="flex min-w-0 flex-1 flex-col gap-4">
+                      {votazioneAperta && !unitaVotabili.length && (
+                        <p className="text-sm text-muted-foreground">
+                          Non possiedi (né rappresenti per delega) unità in questo condominio,
+                          quindi non puoi votare questo punto.
+                        </p>
+                      )}
+
+                      {votazioneAperta &&
+                        unitaVotabili.map((u) => {
+                          const votoEsistente = votiUtente.find(
+                            (v) => v.punto_id === punto.id && v.unita_id === u.id
+                          );
+                          return (
+                            <VotoForm
+                              key={u.id}
+                              puntoId={punto.id}
+                              unitaId={u.id}
+                              assembleaId={assemblea.id}
+                              unitaLabel={u.identificativo}
+                              perDelega={!propriIds.has(u.id)}
+                              votoAttuale={votoEsistente?.scelta}
+                            />
+                          );
+                        })}
+
+                      {votazioneConclusa && (
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-sm text-muted-foreground">
+                            Quorum dell&apos;edificio
+                          </span>
+                          <Badge variant="accent" className="w-fit">
+                            <span className="cifre">
+                              {formatMillesimi(punto.esito_quorum_totale ?? 0)}
+                            </span>{" "}
+                            millesimi
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {nonAncoraAperta && (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    La votazione non è ancora stata aperta dall&apos;amministratore.
+                  </p>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      </Section>
+    </PageBody>
   );
 }

@@ -1,8 +1,16 @@
 "use client";
 
-import { Field, Label, Select } from "@/components/ui/input";
+import { Info } from "lucide-react";
+import { Field, Select } from "@/components/ui/input";
 import type { CampoImport } from "@/lib/import/tipi";
 
+/**
+ * Abbinamento fra i campi del portale e le colonne del file caricato.
+ *
+ * Sotto ogni menu compare un esempio preso dalle prime righe reali del file:
+ * è il modo più rapido per accorgersi di aver abbinato la colonna sbagliata,
+ * molto prima di arrivare all'anteprima.
+ */
 export function PassoMappatura({
   campi,
   intestazioni,
@@ -24,45 +32,62 @@ export function PassoMappatura({
       .join(", ");
   }
 
+  const obbligatoriMancanti = campi.filter(
+    (c) => c.obbligatorio && mappatura[c.chiave] == null
+  ).length;
+
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted-foreground">
-        Abbina ogni campo alla colonna corrispondente nel tuo file. Abbiamo
-        suggerito una mappatura automatica: controllala prima di continuare.
-      </p>
-      {campi.map((campo) => {
-        const indiceSelezionato = mappatura[campo.chiave];
-        return (
-          <Field key={campo.chiave}>
-            <Label htmlFor={`mappa_${campo.chiave}`}>
-              {campo.etichetta}
-              {campo.obbligatorio && <span className="text-danger"> *</span>}
-            </Label>
-            <Select
+    <div className="flex flex-col gap-5">
+      <div className="flex items-start gap-2.5 rounded-xl border border-border bg-surface-muted/40 p-4">
+        <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Abbiamo proposto un abbinamento automatico in base ai nomi delle colonne: controllalo
+          prima di continuare.{" "}
+          {obbligatoriMancanti > 0 && (
+            <span className="font-medium text-foreground">
+              {obbligatoriMancanti === 1
+                ? "Manca ancora un campo obbligatorio."
+                : `Mancano ancora ${obbligatoriMancanti} campi obbligatori.`}
+            </span>
+          )}
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {campi.map((campo) => {
+          const indiceSelezionato = mappatura[campo.chiave];
+          const esempio =
+            indiceSelezionato != null ? anteprimaColonna(indiceSelezionato) : null;
+          return (
+            <Field
+              key={campo.chiave}
               id={`mappa_${campo.chiave}`}
-              value={indiceSelezionato ?? ""}
-              onChange={(e) =>
-                onChange({
-                  ...mappatura,
-                  [campo.chiave]: e.target.value === "" ? null : Number(e.target.value),
-                })
+              label={campo.etichetta}
+              required={campo.obbligatorio}
+              hint={
+                indiceSelezionato != null ? `Esempio: ${esempio || "(vuoto)"}` : undefined
               }
             >
-              <option value="">— non mappato —</option>
-              {intestazioni.map((intestazione, indice) => (
-                <option key={indice} value={indice}>
-                  {intestazione || `Colonna ${indice + 1}`}
-                </option>
-              ))}
-            </Select>
-            {indiceSelezionato !== null && indiceSelezionato !== undefined && (
-              <p className="text-xs text-muted-foreground truncate">
-                Esempio: {anteprimaColonna(indiceSelezionato) || "(vuoto)"}
-              </p>
-            )}
-          </Field>
-        );
-      })}
+              <Select
+                value={indiceSelezionato ?? ""}
+                onChange={(e) =>
+                  onChange({
+                    ...mappatura,
+                    [campo.chiave]: e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+              >
+                <option value="">— non abbinato —</option>
+                {intestazioni.map((intestazione, indice) => (
+                  <option key={indice} value={indice}>
+                    {intestazione || `Colonna ${indice + 1}`}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          );
+        })}
+      </div>
     </div>
   );
 }

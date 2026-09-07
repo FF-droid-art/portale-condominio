@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Building2, Home, Users } from "lucide-react";
+import { GuscioWizard, AzioniPasso, PannelloEsito } from "@/components/import/guscio-wizard";
 import { Button } from "@/components/ui/button";
-import { IndicatoreFasi } from "@/components/import/indicatore-fasi";
+import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
 import { PassoCaricaFile } from "@/components/import/passo-carica-file";
 import { PassoMappatura } from "@/components/import/passo-mappatura";
 import { TabellaAnteprima } from "@/components/import/tabella-anteprima";
@@ -62,6 +63,24 @@ function costruisciMillesimi(
 
 type Fase = "carica" | "mappa" | "verifica" | "esito";
 const INDICE_FASE: Record<Fase, 0 | 1 | 2 | 3> = { carica: 0, mappa: 1, verifica: 2, esito: 3 };
+
+const TITOLI: Record<Fase, { titolo: string; descrizione?: string }> = {
+  carica: {
+    titolo: "Carica il file",
+    descrizione:
+      "Un file .xlsx o .csv con una riga per ogni unità e le colonne del condominio (nome, indirizzo) ripetute su ogni riga.",
+  },
+  mappa: {
+    titolo: "Abbina le colonne",
+    descrizione: "Dì al portale quale colonna del tuo file corrisponde a quale campo.",
+  },
+  verifica: {
+    titolo: "Controlla che cosa verrà creato",
+    descrizione:
+      "Niente è ancora stato scritto. Se qualche riga ha un errore, correggi il file e ricaricalo.",
+  },
+  esito: { titolo: "Esito dell'importazione" },
+};
 
 const CAMPI_OBBLIGATORI = CAMPI_CONDOMINI_UNITA.filter((c) => c.obbligatorio).map((c) => c.chiave);
 
@@ -151,9 +170,11 @@ export function ImportCondominiUnitaWizard() {
   }
 
   return (
-    <Card className="flex flex-col gap-6">
-      <IndicatoreFasi fase={INDICE_FASE[fase]} />
-
+    <GuscioWizard
+      fase={INDICE_FASE[fase]}
+      titoloPasso={TITOLI[fase].titolo}
+      descrizionePasso={TITOLI[fase].descrizione}
+    >
       {fase === "carica" && (
         <PassoCaricaFile
           onFileAnalizzato={(f, nome) => {
@@ -166,7 +187,7 @@ export function ImportCondominiUnitaWizard() {
       )}
 
       {fase === "mappa" && foglio && (
-        <div className="flex flex-col gap-4">
+        <>
           <PassoMappatura
             campi={CAMPI_CONDOMINI_UNITA}
             intestazioni={foglio.intestazioni}
@@ -174,31 +195,61 @@ export function ImportCondominiUnitaWizard() {
             mappatura={mappatura}
             onChange={setMappatura}
           />
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setFase("carica")}>
-              Indietro
-            </Button>
-            <Button disabled={!mappaturaCompleta} onClick={() => setFase("verifica")}>
-              Continua
-            </Button>
-          </div>
-        </div>
+          <AzioniPasso
+            indietro={
+              <Button variant="ghost" onClick={() => setFase("carica")}>
+                Indietro
+              </Button>
+            }
+            avanti={
+              <Button disabled={!mappaturaCompleta} onClick={() => setFase("verifica")}>
+                Continua
+              </Button>
+            }
+          />
+        </>
       )}
 
       {fase === "verifica" && (
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">
-            {condominiDistinti} condomìni, {unitaDistinte} unità e {personeDistinte} persone
-            individuati nel file. Le righe con stesso nome e indirizzo finiscono nello
-            stesso condominio (riutilizzato se già esistente, altrimenti creato); le righe
-            della stessa unità (più occupanti) vengono unite in un&apos;unica unità, e ogni
-            persona viene collegata alla sua unità.
-          </p>
+        <>
+          {/* Il riepilogo dei conteggi viene prima della tabella: è la
+              risposta alla domanda "che cosa sto per creare?", che si pone
+              prima di mettersi a controllare riga per riga. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <RiepilogoConteggio
+              icon={Building2}
+              valore={condominiDistinti}
+              etichetta={condominiDistinti === 1 ? "condominio" : "condomìni"}
+            />
+            <RiepilogoConteggio
+              icon={Home}
+              valore={unitaDistinte}
+              etichetta={unitaDistinte === 1 ? "unità" : "unità"}
+            />
+            <RiepilogoConteggio
+              icon={Users}
+              valore={personeDistinte}
+              etichetta={personeDistinte === 1 ? "persona" : "persone"}
+            />
+          </div>
+
+          <Alert tono="info" titolo="Come vengono raggruppate le righe">
+            Le righe con lo stesso nome e indirizzo finiscono nello stesso condominio, che viene
+            riutilizzato se esiste già e creato altrimenti. Le righe della stessa unità con più
+            occupanti vengono unite in un&apos;unica unità, e ogni persona viene collegata alla sua.
+          </Alert>
+
           {tabelleMillesimi.length > 0 && (
-            <p className="text-sm text-muted-foreground">
-              Tabelle millesimali rilevate: <b>{tabelleMillesimi.join(", ")}</b>.
-            </p>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Tabelle millesimali rilevate:</span>
+              {tabelleMillesimi.map((nome) => (
+                <Badge key={nome} variant="accent">
+                  {nome}
+                </Badge>
+              ))}
+            </div>
           )}
+
           <TabellaAnteprima
             colonne={[
               { chiave: "identificativo", etichetta: "Unità" },
@@ -210,46 +261,76 @@ export function ImportCondominiUnitaWizard() {
             righe={righe}
             erroriPerRiga={erroriPerRiga}
           />
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setFase("mappa")}>
-              Indietro
-            </Button>
-            <Button disabled={haErrori || pending} pending={pending} onClick={confermaImportazione}>
-              Conferma importazione
-            </Button>
-          </div>
-        </div>
+
+          <AzioniPasso
+            indietro={
+              <Button variant="ghost" onClick={() => setFase("mappa")}>
+                Indietro
+              </Button>
+            }
+            avanti={
+              <Button disabled={haErrori || pending} pending={pending} onClick={confermaImportazione}>
+                Conferma importazione
+              </Button>
+            }
+          />
+        </>
       )}
 
       {fase === "esito" && esito && (
-        <div className="flex flex-col gap-4">
-          {esito.ok ? (
-            <div className="flex items-center gap-2 text-success">
-              <CheckCircle2 className="size-5" />
-              <p>
-                {esito.condominiCreati} condomìni creati, {esito.condominiRiusati} già
-                esistenti riutilizzati, {esito.unitaCreate} unità importate,{" "}
-                {esito.personeCreate} persone in anagrafica.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2 text-danger text-sm">
-              {esito.erroreGenerale && <p>{esito.erroreGenerale}</p>}
-              {esito.erroriRiga?.map((e) => (
-                <p key={e.indice}>
-                  Riga {e.indice + 1}: {e.messaggio}
-                </p>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-3">
-            {esito.ok && <Button href="/admin/condomini">Vai ai condomìni</Button>}
-            <Button variant="secondary" onClick={riparti}>
-              Importa un altro file
-            </Button>
-          </div>
-        </div>
+        <PannelloEsito
+          ok={esito.ok}
+          titolo={esito.ok ? "Importazione completata" : "Importazione non riuscita"}
+          dettaglio={
+            esito.ok ? (
+              <>
+                <strong>{esito.condominiCreati}</strong>{" "}
+                {esito.condominiCreati === 1 ? "condominio creato" : "condomìni creati"},{" "}
+                <strong>{esito.condominiRiusati}</strong> già esistenti riutilizzati,{" "}
+                <strong>{esito.unitaCreate}</strong>{" "}
+                {esito.unitaCreate === 1 ? "unità importata" : "unità importate"},{" "}
+                <strong>{esito.personeCreate}</strong>{" "}
+                {esito.personeCreate === 1 ? "persona" : "persone"} in anagrafica.
+              </>
+            ) : undefined
+          }
+          erroreGenerale={esito.ok ? undefined : esito.erroreGenerale}
+          erroriRiga={esito.ok ? undefined : esito.erroriRiga}
+          azioni={
+            <>
+              {esito.ok && <Button href="/admin/condomini">Vai ai condomìni</Button>}
+              <Button variant="secondary" onClick={riparti}>
+                Importa un altro file
+              </Button>
+            </>
+          }
+        />
       )}
-    </Card>
+    </GuscioWizard>
+  );
+}
+
+function RiepilogoConteggio({
+  icon: Icona,
+  valore,
+  etichetta,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  valore: number;
+  etichetta: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-muted/40 px-4 py-3">
+      <span
+        className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"
+        aria-hidden="true"
+      >
+        <Icona className="size-4" />
+      </span>
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className="cifre text-lg font-semibold tracking-tight">{valore}</span>
+        <span className="text-xs text-muted-foreground">{etichetta}</span>
+      </span>
+    </div>
   );
 }

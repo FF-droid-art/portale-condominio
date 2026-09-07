@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
 import { ImportUnitaWizard } from "./wizard";
+
+export const metadata = { title: "Importa unità" };
 
 export default async function ImportaUnitaPage() {
   const supabase = await createClient();
@@ -9,16 +12,13 @@ export default async function ImportaUnitaPage() {
     .order("nome");
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Importa unità</h1>
-        <p className="text-muted-foreground mt-1">
-          Carica un file .xlsx o .csv con l&apos;elenco delle unità immobiliari di un
-          condominio (identificativo, piano, millesimi).
-        </p>
-      </div>
-
+    <PageBody>
+      <PageHeader
+        indietro={{ href: "/admin/importa", label: "Importa dati" }}
+        titolo="Importa unità"
+        descrizione="Aggiunge unità immobiliari a un condominio che hai già creato: identificativo, piano e millesimi. Per importare anche gli occupanti usa invece «Condomìni e unità»."
+      />
       <ImportUnitaWizard condomini={condomini ?? []} />
-    </div>
+    </PageBody>
   );
 }

@@ -1,10 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
-import Link from "next/link";
+import { MailCheck } from "lucide-react";
 import { registrati } from "./actions";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Label, Select } from "@/components/ui/input";
+import { AuthShell, AuthLink } from "@/components/auth-shell";
+import { Field, FormGrid, Input, Select } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export default function RegistrazionePage() {
@@ -12,84 +14,82 @@ export default function RegistrazionePage() {
 
   if (stato?.successo) {
     return (
-      <div className="bg-auth flex flex-1 items-center justify-center px-4 py-12">
-        <Card className="w-full max-w-sm rounded-3xl text-center flex flex-col gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Controlla la tua email
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Ti abbiamo inviato un link di conferma. Dopo aver confermato
-            potrai accedere.
+      <AuthShell
+        titolo="Controlla la tua email"
+        sottotitolo="Ti abbiamo inviato un link di conferma: aprilo per attivare l'account, poi potrai accedere."
+      >
+        <div className="flex flex-col items-center gap-5 text-center">
+          <span
+            className="grid size-12 place-items-center rounded-2xl bg-success-bg text-success"
+            aria-hidden="true"
+          >
+            <MailCheck className="size-6" />
+          </span>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Se non lo trovi entro qualche minuto, controlla anche la cartella
+            della posta indesiderata.
           </p>
-          <Link href="/login" className="font-medium text-accent">
-            Torna al login
-          </Link>
-        </Card>
-      </div>
+          <Button href="/login" variant="secondary" full>
+            Torna all&apos;accesso
+          </Button>
+        </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="bg-auth flex flex-1 items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-sm rounded-3xl">
-        <form action={action} className="flex flex-col gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Crea un account
-          </h1>
-
-          <div className="flex gap-3">
-            <Field className="flex-1">
-              <Label htmlFor="nome">Nome</Label>
-              <Input id="nome" name="nome" required />
-            </Field>
-            <Field className="flex-1">
-              <Label htmlFor="cognome">Cognome</Label>
-              <Input id="cognome" name="cognome" required />
-            </Field>
-          </div>
-
-          <Field>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" required />
+    <AuthShell
+      titolo="Crea il tuo account"
+      sottotitolo="Bastano pochi dati: potrai completare tutto il resto dopo."
+      piede={
+        <>
+          Hai già un account? <AuthLink href="/login">Accedi</AuthLink>
+        </>
+      }
+    >
+      <form action={action} className="flex flex-col gap-4">
+        <FormGrid colonne={2}>
+          <Field id="nome" label="Nome" required>
+            <Input name="nome" autoComplete="given-name" required />
           </Field>
-
-          <Field>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              required
-              minLength={8}
-            />
+          <Field id="cognome" label="Cognome" required>
+            <Input name="cognome" autoComplete="family-name" required />
           </Field>
+        </FormGrid>
 
-          <Field>
-            <Label htmlFor="ruolo">Come vuoi registrarti?</Label>
-            <Select id="ruolo" name="ruolo" defaultValue="condomino">
-              <option value="condomino">Sono un condomino</option>
-              <option value="amministratore">
-                Sono l&apos;amministratore di un condominio
-              </option>
-            </Select>
-          </Field>
+        <Field id="email" label="Email" required>
+          <Input
+            name="email"
+            type="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder="nome@esempio.it"
+            required
+          />
+        </Field>
 
-          {stato?.errore && (
-            <p className="text-sm text-danger">{stato.errore}</p>
-          )}
+        <Field id="password" label="Password" required hint="Almeno 8 caratteri.">
+          <PasswordInput name="password" autoComplete="new-password" minLength={8} required />
+        </Field>
 
-          <Button type="submit" pending={pending} className="mt-2 w-full">
-            {pending ? "Creazione account…" : "Registrati"}
-          </Button>
+        <Field
+          id="ruolo"
+          label="Come vuoi registrarti?"
+          hint="Puoi cambiare idea più avanti: sarà l'amministratore a collegarti alle tue unità."
+        >
+          <Select name="ruolo" defaultValue="condomino">
+            <option value="condomino">Sono un condòmino</option>
+            <option value="amministratore">Sono l&apos;amministratore di un condominio</option>
+          </Select>
+        </Field>
 
-          <p className="text-sm text-center text-muted-foreground">
-            Hai già un account?{" "}
-            <Link href="/login" className="font-medium text-accent">
-              Accedi
-            </Link>
-          </p>
-        </form>
-      </Card>
-    </div>
+        <FormError>{stato?.errore}</FormError>
+
+        <Button type="submit" pending={pending} full size="lg" className="mt-1">
+          {pending ? "Creazione account…" : "Crea account"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

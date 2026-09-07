@@ -3,7 +3,8 @@
 import { useActionState } from "react";
 import { FileText, Upload } from "lucide-react";
 import { caricaVerbale } from "./actions";
-import { Field, Input, Label } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export function VerbaleUpload({
@@ -18,35 +19,45 @@ export function VerbaleUpload({
   const [stato, action, pending] = useActionState(caricaVerbale, undefined);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {verbaleUrl && signedUrl && (
-        <Button
-          href={signedUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="secondary"
-          className="w-fit"
-          size="sm"
-        >
-          <FileText className="size-4" />
-          Scarica verbale
-        </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/50 px-4 py-3">
+          <span className="flex min-w-0 items-center gap-2.5 text-sm">
+            <span
+              className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface text-muted-foreground"
+              aria-hidden="true"
+            >
+              <FileText className="size-4" />
+            </span>
+            <span className="font-medium">Verbale caricato</span>
+          </span>
+          <Button
+            href={signedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            size="sm"
+          >
+            Scarica il verbale
+          </Button>
+        </div>
       )}
 
-      <form action={action} className="flex items-end gap-2">
+      <form action={action} className="flex flex-col gap-3">
         <input type="hidden" name="assemblea_id" value={assembleaId} />
-        <Field className="flex-1">
-          <Label htmlFor="verbale">
-            {verbaleUrl ? "Sostituisci verbale" : "Carica verbale (PDF o immagine, max 4MB)"}
-          </Label>
-          <Input id="verbale" name="verbale" type="file" accept="application/pdf,image/*" required />
+        <Field
+          id="verbale"
+          label={verbaleUrl ? "Sostituisci il verbale" : "Carica il verbale"}
+          hint="PDF o immagine, fino a 4 MB."
+        >
+          <Input name="verbale" type="file" accept="application/pdf,image/*" required />
         </Field>
-        <Button type="submit" variant="secondary" pending={pending}>
-          <Upload className="size-4" />
-          Carica
+        <FormError>{stato?.errore}</FormError>
+        <Button type="submit" variant="secondary" pending={pending} className="w-fit">
+          <Upload className="size-4" aria-hidden="true" />
+          {pending ? "Caricamento…" : "Carica"}
         </Button>
       </form>
-      {stato?.errore && <p className="text-sm text-danger">{stato.errore}</p>}
     </div>
   );
 }

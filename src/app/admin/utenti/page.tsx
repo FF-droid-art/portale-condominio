@@ -1,9 +1,12 @@
-import { User } from "lucide-react";
+import { Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { RigaUtente } from "./riga-utente";
 import type { Utente } from "@/lib/types";
-import { Table, TableHeader, TableBody, TableRow, TableHead } from "@/components/ui/table";
+import { PageBody, PageHeader } from "@/components/ui/page-header";
+import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ElencoUtenti } from "./elenco-utenti";
+
+export const metadata = { title: "Utenti" };
 
 export default async function UtentiPage() {
   const supabase = await createClient();
@@ -12,36 +15,29 @@ export default async function UtentiPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  return (
-    <div className="flex flex-col gap-8">
-      <h1 className="text-3xl font-bold tracking-tight">Utenti</h1>
-      <p className="text-sm text-muted-foreground max-w-xl">
-        Qui vedi solo gli utenti collegati ai tuoi condomini: puoi
-        promuovere un condomino ad amministratore o riportarlo a
-        condomino. Le unità immobiliari vanno collegate a un utente tramite
-        la tabella <code>unita_proprietari</code> (non ancora gestita da
-        questa interfaccia).
-      </p>
+  const elenco = (utenti ?? []) as Utente[];
 
-      {utenti?.length ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nome</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Ruolo</TableHead>
-              <TableHead></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(utenti as Utente[]).map((u) => (
-              <RigaUtente key={u.id} utente={u} />
-            ))}
-          </TableBody>
-        </Table>
+  return (
+    <PageBody>
+      <PageHeader
+        titolo="Utenti"
+        descrizione="Gli account registrati collegati ai tuoi condomìni. Da qui puoi promuovere un condòmino ad amministratore, riportarlo a condòmino oppure vedere il portale con i suoi occhi."
+      />
+
+      <Alert tono="info" titolo="Come si collega un utente a un'unità">
+        Il legame fra una persona e la sua unità immobiliare si crea dalla scheda dell&apos;unità,
+        con «Aggiungi soggetto». Qui si gestiscono solo i permessi dell&apos;account.
+      </Alert>
+
+      {elenco.length ? (
+        <ElencoUtenti utenti={elenco} />
       ) : (
-        <EmptyState icon={User} title="Nessun utente registrato" />
+        <EmptyState
+          icon={Users}
+          title="Nessun utente registrato"
+          description="Qui compariranno gli account dei condòmini dei tuoi condomìni, non appena si registreranno al portale."
+        />
       )}
-    </div>
+    </PageBody>
   );
 }

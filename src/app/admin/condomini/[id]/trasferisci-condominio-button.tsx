@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Share2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export function TrasferisciCondominioButton() {
@@ -10,36 +11,26 @@ export function TrasferisciCondominioButton() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setAperto(true)}
-        title="Trasferisci il condominio a un altro amministratore"
-        className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
-      >
-        <Share2 className="size-4" /> Trasferisci
-      </button>
+      <Button variant="ghost" onClick={() => setAperto(true)}>
+        <Share2 className="size-4" aria-hidden="true" />
+        Trasferisci a un altro amministratore
+      </Button>
 
-      {aperto && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setAperto(false)}
-        >
-          <Card
-            className="w-full max-w-sm items-center gap-3 text-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Share2 className="size-8 text-accent" />
-            <p className="text-sm font-semibold">Trasferisci condominio</p>
-            <p className="text-sm text-muted-foreground">
-              Trasferire la gestione del condominio a un altro amministratore (es. dopo la
-              revoca della nomina) sarà presto disponibile. 🚧 Funzione in lavorazione.
-            </p>
-            <Button type="button" onClick={() => setAperto(false)}>
-              Ho capito
-            </Button>
-          </Card>
-        </div>
-      )}
+      <Dialog
+        aperto={aperto}
+        onChiudi={() => setAperto(false)}
+        titolo="Trasferisci condominio"
+        footer={
+          <Button onClick={() => setAperto(false)}>Ho capito</Button>
+        }
+      >
+        <Alert tono="warning" titolo="Funzione in lavorazione">
+          Il passaggio della gestione di un condominio a un altro amministratore
+          (per esempio dopo la revoca della nomina) sarà disponibile in un
+          prossimo aggiornamento. Nel frattempo il condominio resta assegnato a
+          te.
+        </Alert>
+      </Dialog>
     </>
   );
 }

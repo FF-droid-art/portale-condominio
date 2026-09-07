@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import Link from "next/link";
+import { MailCheck } from "lucide-react";
 import { richiediReset } from "./actions";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Label } from "@/components/ui/input";
+import { AuthShell, AuthLink } from "@/components/auth-shell";
+import { Field, Input } from "@/components/ui/input";
+import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 export default function RecuperaPasswordPage() {
@@ -12,55 +13,58 @@ export default function RecuperaPasswordPage() {
 
   if (stato?.successo) {
     return (
-      <div className="bg-auth flex flex-1 items-center justify-center px-4 py-12">
-        <Card className="w-full max-w-sm rounded-3xl text-center flex flex-col gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Controlla la tua email
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Se l&apos;indirizzo corrisponde a un account esistente, ti abbiamo
-            inviato un link per reimpostare la password.
+      <AuthShell
+        titolo="Controlla la tua email"
+        sottotitolo="Se l'indirizzo corrisponde a un account esistente, ti abbiamo inviato un link per scegliere una nuova password."
+      >
+        <div className="flex flex-col items-center gap-5 text-center">
+          <span
+            className="grid size-12 place-items-center rounded-2xl bg-success-bg text-success"
+            aria-hidden="true"
+          >
+            <MailCheck className="size-6" />
+          </span>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Il link resta valido per un tempo limitato. Se non arriva, controlla
+            la posta indesiderata e riprova.
           </p>
-          <Link href="/login" className="font-medium text-accent">
-            Torna al login
-          </Link>
-        </Card>
-      </div>
+          <Button href="/login" variant="secondary" full>
+            Torna all&apos;accesso
+          </Button>
+        </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="bg-auth flex flex-1 items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-sm rounded-3xl">
-        <form action={action} className="flex flex-col gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Recupera password
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Inserisci l&apos;email con cui ti sei registrato: ti mandiamo un
-            link per scegliere una nuova password.
-          </p>
+    <AuthShell
+      titolo="Recupera la password"
+      sottotitolo="Inserisci l'email con cui ti sei registrato: ti mandiamo un link per sceglierne una nuova."
+      piede={
+        <>
+          Te la sei ricordata? <AuthLink href="/login">Torna all&apos;accesso</AuthLink>
+        </>
+      }
+    >
+      <form action={action} className="flex flex-col gap-4">
+        <Field id="email" label="Email" required>
+          <Input
+            name="email"
+            type="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder="nome@esempio.it"
+            required
+          />
+        </Field>
 
-          <Field>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" required />
-          </Field>
+        <FormError>{stato?.errore}</FormError>
 
-          {stato?.errore && (
-            <p className="text-sm text-danger">{stato.errore}</p>
-          )}
-
-          <Button type="submit" pending={pending} className="mt-2 w-full">
-            {pending ? "Invio in corso…" : "Invia link di reset"}
-          </Button>
-
-          <p className="text-sm text-center text-muted-foreground">
-            <Link href="/login" className="font-medium text-accent">
-              Torna al login
-            </Link>
-          </p>
-        </form>
-      </Card>
-    </div>
+        <Button type="submit" pending={pending} full size="lg" className="mt-1">
+          {pending ? "Invio in corso…" : "Invia il link"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

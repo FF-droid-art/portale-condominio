@@ -1,10 +1,9 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { GuscioWizard, AzioniPasso, PannelloEsito } from "@/components/import/guscio-wizard";
 import { Button } from "@/components/ui/button";
-import { IndicatoreFasi } from "@/components/import/indicatore-fasi";
+import { Alert } from "@/components/ui/alert";
 import { PassoCaricaFile } from "@/components/import/passo-carica-file";
 import { PassoMappatura } from "@/components/import/passo-mappatura";
 import { TabellaAnteprima } from "@/components/import/tabella-anteprima";
@@ -17,6 +16,24 @@ import { elencaIdentificativiUnita, importaSpeseStoriche, type EsitoImportSpese 
 
 type Fase = "carica" | "mappa" | "verifica" | "esito";
 const INDICE_FASE: Record<Fase, 0 | 1 | 2 | 3> = { carica: 0, mappa: 1, verifica: 2, esito: 3 };
+
+const TITOLI: Record<Fase, { titolo: string; descrizione?: string }> = {
+  carica: {
+    titolo: "Scegli il condominio e carica il file",
+    descrizione:
+      "Un file .xlsx o .csv con una riga per ogni quota di unità su una spesa. Le unità devono già esistere nel condominio scelto.",
+  },
+  mappa: {
+    titolo: "Abbina le colonne",
+    descrizione: "Dì al portale quale colonna del tuo file corrisponde a quale campo.",
+  },
+  verifica: {
+    titolo: "Controlla le righe",
+    descrizione:
+      "Niente è ancora stato scritto. Le righe che citano un'unità inesistente vanno corrette nel file.",
+  },
+  esito: { titolo: "Esito dell'importazione" },
+};
 
 const CAMPI_OBBLIGATORI = CAMPI_SPESE.filter((c) => c.obbligatorio).map((c) => c.chiave);
 
@@ -96,9 +113,11 @@ export function ImportSpeseWizard({
   }
 
   return (
-    <Card className="flex flex-col gap-6">
-      <IndicatoreFasi fase={INDICE_FASE[fase]} />
-
+    <GuscioWizard
+      fase={INDICE_FASE[fase]}
+      titoloPasso={TITOLI[fase].titolo}
+      descrizionePasso={TITOLI[fase].descrizione}
+    >
       {fase === "carica" && (
         <PassoCaricaFile
           condomini={condomini}
@@ -119,7 +138,7 @@ export function ImportSpeseWizard({
       )}
 
       {fase === "mappa" && foglio && (
-        <div className="flex flex-col gap-4">
+        <>
           <PassoMappatura
             campi={CAMPI_SPESE}
             intestazioni={foglio.intestazioni}
@@ -127,24 +146,29 @@ export function ImportSpeseWizard({
             mappatura={mappatura}
             onChange={setMappatura}
           />
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setFase("carica")}>
-              Indietro
-            </Button>
-            <Button disabled={!mappaturaCompleta} onClick={() => setFase("verifica")}>
-              Continua
-            </Button>
-          </div>
-        </div>
+          <AzioniPasso
+            indietro={
+              <Button variant="ghost" onClick={() => setFase("carica")}>
+                Indietro
+              </Button>
+            }
+            avanti={
+              <Button disabled={!mappaturaCompleta} onClick={() => setFase("verifica")}>
+                Continua
+              </Button>
+            }
+          />
+        </>
       )}
 
       {fase === "verifica" && (
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">
-            Ogni riga rappresenta la quota di una unità per una spesa: righe con
-            stessa descrizione, categoria, data e fornitore vengono raggruppate
-            in un&apos;unica spesa.
-          </p>
+        <>
+          <Alert tono="info" titolo="Come vengono raggruppate le righe">
+            Ogni riga è la quota di un&apos;unità su una spesa. Le righe con la stessa
+            descrizione, categoria, data e fornitore vengono unite in un&apos;unica spesa, con le
+            rispettive ripartizioni.
+          </Alert>
+
           <TabellaAnteprima
             colonne={[
               { chiave: "identificativoUnita", etichetta: "Unità" },
@@ -156,44 +180,48 @@ export function ImportSpeseWizard({
             righe={righe}
             erroriPerRiga={erroriPerRiga}
           />
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setFase("mappa")}>
-              Indietro
-            </Button>
-            <Button disabled={haErrori || pending} pending={pending} onClick={confermaImportazione}>
-              Conferma importazione
-            </Button>
-          </div>
-        </div>
+
+          <AzioniPasso
+            indietro={
+              <Button variant="ghost" onClick={() => setFase("mappa")}>
+                Indietro
+              </Button>
+            }
+            avanti={
+              <Button disabled={haErrori || pending} pending={pending} onClick={confermaImportazione}>
+                Conferma importazione
+              </Button>
+            }
+          />
+        </>
       )}
 
       {fase === "esito" && esito && (
-        <div className="flex flex-col gap-4">
-          {esito.ok ? (
-            <div className="flex items-center gap-2 text-success">
-              <CheckCircle2 className="size-5" />
-              <p>
-                {esito.speseCreate} spese e {esito.ripartizioniCreate} ripartizioni importate.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2 text-danger text-sm">
-              {esito.erroreGenerale && <p>{esito.erroreGenerale}</p>}
-              {esito.erroriRiga?.map((e) => (
-                <p key={e.indice}>
-                  Riga {e.indice + 1}: {e.messaggio}
-                </p>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-3">
-            {esito.ok && <Button href="/admin/spese">Vai alle spese</Button>}
-            <Button variant="secondary" onClick={riparti}>
-              Importa un altro file
-            </Button>
-          </div>
-        </div>
+        <PannelloEsito
+          ok={esito.ok}
+          titolo={esito.ok ? "Importazione completata" : "Importazione non riuscita"}
+          dettaglio={
+            esito.ok ? (
+              <>
+                <strong>{esito.speseCreate}</strong>{" "}
+                {esito.speseCreate === 1 ? "spesa creata" : "spese create"} e{" "}
+                <strong>{esito.ripartizioniCreate}</strong>{" "}
+                {esito.ripartizioniCreate === 1 ? "ripartizione" : "ripartizioni"} importate.
+              </>
+            ) : undefined
+          }
+          erroreGenerale={esito.ok ? undefined : esito.erroreGenerale}
+          erroriRiga={esito.ok ? undefined : esito.erroriRiga}
+          azioni={
+            <>
+              {esito.ok && <Button href="/admin/spese">Vai alle spese</Button>}
+              <Button variant="secondary" onClick={riparti}>
+                Importa un altro file
+              </Button>
+            </>
+          }
+        />
       )}
-    </Card>
+    </GuscioWizard>
   );
 }

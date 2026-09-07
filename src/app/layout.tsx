@@ -13,8 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Portale Condominio",
-  description: "Gestione condominiale: spese, unità, assemblee e votazioni.",
+  title: {
+    default: "Portale Condominio",
+    template: "%s · Portale Condominio",
+  },
+  description:
+    "Gestione condominiale online: spese e ripartizioni, unità immobiliari, assemblee e votazioni telematiche.",
 };
 
 export default function RootLayout({
@@ -27,7 +31,7 @@ export default function RootLayout({
       lang="it"
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col font-sans antialiased bg-background text-foreground">
+      <body className="flex min-h-full flex-col bg-background font-sans text-foreground antialiased">
         {children}
       </body>
     </html>
