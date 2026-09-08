@@ -10,22 +10,24 @@ import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/alert";
 import { CerchioVotiLive } from "@/components/ui/cerchio-voti";
 import { formatMillesimi } from "@/lib/format";
-
-const ETICHETTA_MAGGIORANZA: Record<string, string> = {
-  semplice: "maggioranza semplice",
-  qualificata_intervenuti: "maggioranza qualificata degli intervenuti",
-};
+import { etichettaMaggioranza, type Convocazione } from "@/lib/quorum";
 
 export function PuntoOdgCard({
   punto,
   assembleaId,
   condominioId,
   millesimiTotali,
+  convocazione,
+  unitaTotali,
+  unitaIntervenute,
 }: {
   punto: PuntoOdg;
   assembleaId: string;
   condominioId: string;
   millesimiTotali: number;
+  convocazione: Convocazione;
+  unitaTotali: number;
+  unitaIntervenute: number;
 }) {
   const [statoApri, azioneApri, pendingApri] = useActionState(apriVotazione, undefined);
   const [statoChiudi, azioneChiudi, pendingChiudi] = useActionState(chiudiVotazione, undefined);
@@ -39,8 +41,7 @@ export function PuntoOdgCard({
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-col gap-1">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Punto {punto.numero_punto} ·{" "}
-            {ETICHETTA_MAGGIORANZA[punto.tipo_maggioranza] ?? punto.tipo_maggioranza}
+            Punto {punto.numero_punto} · {etichettaMaggioranza(punto.tipo_maggioranza)}
           </span>
           <h3 className="text-base font-semibold leading-snug text-pretty">{punto.descrizione}</h3>
         </div>
@@ -63,7 +64,7 @@ export function PuntoOdgCard({
       )}
 
       {(votazioneAperta || votazioneConclusa) && (
-        <div className="mt-4 flex flex-col gap-5 rounded-xl border border-border bg-surface-muted/40 p-4 sm:flex-row sm:items-center sm:gap-6">
+        <div className="mt-4 flex flex-col gap-5 rounded-xl border border-border bg-surface-muted/40 p-4 sm:flex-row sm:items-start sm:gap-6">
           <CerchioVotiLive
             puntoId={punto.id}
             millesimiTotali={millesimiTotali}
@@ -71,6 +72,15 @@ export function PuntoOdgCard({
               favorevole: votazioneConclusa ? punto.esito_favorevole ?? 0 : punto.tally_favorevole,
               contrario: votazioneConclusa ? punto.esito_contrario ?? 0 : punto.tally_contrario,
               astenuto: votazioneConclusa ? punto.esito_astenuto ?? 0 : punto.tally_astenuto,
+              nFavorevole: punto.tally_n_favorevole,
+              nContrario: punto.tally_n_contrario,
+              nAstenuto: punto.tally_n_astenuto,
+            }}
+            quorum={{
+              tipoMaggioranza: punto.tipo_maggioranza,
+              convocazione,
+              unitaTotali,
+              unitaIntervenute,
             }}
             size={104}
           />

@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessagesSquare,
   Receipt,
   ShieldCheck,
   Users,
@@ -48,6 +49,7 @@ const NAV_ADMIN: GruppoNav[] = [
       { href: "/admin/condomini", label: "Condomini", icon: Building2 },
       { href: "/admin/spese", label: "Spese", icon: Wallet },
       { href: "/admin/assemblee", label: "Assemblee", icon: CalendarClock },
+      { href: "/admin/sondaggi", label: "Sondaggi", icon: MessagesSquare },
     ],
   },
   {
@@ -64,6 +66,7 @@ const NAV_CONDOMINO: GruppoNav[] = [
     voci: [
       { href: "/area-riservata", label: "Riepilogo", icon: LayoutDashboard },
       { href: "/area-riservata/assemblee", label: "Assemblee", icon: CalendarClock },
+      { href: "/area-riservata/sondaggi", label: "Sondaggi", icon: MessagesSquare },
     ],
   },
 ];

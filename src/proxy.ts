@@ -15,6 +15,13 @@ const ROUTE_PUBBLICHE = ["/login", "/registrazione", "/recupera-password"];
 // non va rimandato altrove, altrimenti non potrebbe mai completare il form.
 const ROUTE_ACCESSIBILI_SENZA_LOGIN = ["/", "/reimposta-password", ...ROUTE_PUBBLICHE];
 
+// Prefissi raggiungibili senza login perché indirizzati a persone che non
+// hanno (e non devono avere) un account: "/firma-verbale/<token>" è il
+// collegamento personale inviato per email a presidente e segretario per
+// confermare il verbale. Il token nell'URL identifica il destinatario, ma da
+// solo non conferma nulla: serve il codice usa-e-getta spedito a parte.
+const PREFISSI_ACCESSIBILI_SENZA_LOGIN = ["/firma-verbale/"];
+
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -46,7 +53,9 @@ export default async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isRoutePubblica = ROUTE_PUBBLICHE.includes(pathname);
-  const isAccessibileSenzaLogin = ROUTE_ACCESSIBILI_SENZA_LOGIN.includes(pathname);
+  const isAccessibileSenzaLogin =
+    ROUTE_ACCESSIBILI_SENZA_LOGIN.includes(pathname) ||
+    PREFISSI_ACCESSIBILI_SENZA_LOGIN.some((prefisso) => pathname.startsWith(prefisso));
 
   if (!user && !isAccessibileSenzaLogin) {
     const url = request.nextUrl.clone();

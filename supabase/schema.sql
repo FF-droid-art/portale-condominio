@@ -1913,3 +1913,430 @@ end;
 $$;
 
 grant execute on function importa_condomini_unita_persone(uuid, jsonb, jsonb) to authenticated;
+
+-- ============================================================
+-- Migrazione: assemblee (quorum live, documenti, firma leggera)
+--             e sondaggi/consultazioni rapide
+-- Da applicare manualmente su Supabase (SQL Editor). Idempotente.
+--
+-- Copre quattro funzionalità che condividono lo stesso dominio
+-- "assemblee & governance":
+--
+--  1) QUORUM LIVE (art. 1136 c.c.). Le soglie dipendono dalla
+--     convocazione, che finora non era registrata da nessuna parte:
+--     si aggiunge "assemblee.convocazione". La tabella "presenze"
+--     esisteva già in schema ma non era usata da nessuna pagina;
+--     viene resa utilizzabile dall'amministratore anche per le unità
+--     il cui proprietario non ha un account di login (utente_id
+--     diventa opzionale, come già accaduto per unita_proprietari con
+--     l'arrivo delle anagrafiche).
+--     I conteggi per TESTA dei voti (non solo i millesimi) servono al
+--     calcolo della "maggioranza degli intervenuti": si aggiungono le
+--     colonne tally_n_* su punti_odg, mantenute dallo stesso trigger
+--     che già aggiorna i tally in millesimi, così viaggiano anche
+--     sugli eventi realtime già pubblicati per quella tabella.
+--
+--  2) DOCUMENTI GENERATI (convocazione e verbale). Serve solo il
+--     luogo dell'assemblea: il resto dei dati esiste già. I PDF
+--     generati finiscono nel bucket "documenti-condominio" sotto
+--     "assemblee/{id}/...", già coperto dalle policy esistenti.
+--
+--  3) FIRMA LEGGERA DEL VERBALE: nuova tabella "firme_verbale".
+--     NON è una firma elettronica con valore legale (vedi
+--     IDEE-FUTURE.md): traccia solo che la persona indicata ha
+--     confermato il documento digitando un codice usa-e-getta
+--     ricevuto per email. Il codice non è mai in chiaro nel
+--     database, se ne conserva solo l'impronta SHA-256.
+--
+--  4) SONDAGGI: consultazioni rapide fuori assemblea. La risposta è
+--     per UNITÀ (una unità = una risposta) come i voti assembleari,
+--     così il risultato può essere letto per teste o pesato per
+--     millesimi.
+--
+-- Come per i voti, i dettagli individuali restano privati: le
+-- funzioni *_risultati / *_riepilogo_* restituiscono solo aggregati e
+-- sono richiamabili solo da chi appartiene al condominio o lo
+-- amministra, sullo stesso modello di condominio_millesimi_totali.
+-- ============================================================
+
+-- 1) ASSEMBLEE: convocazione e luogo ---------------------------
+alter table assemblee
+  add column if not exists convocazione smallint not null default 1,
+  add column if not exists luogo text;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'assemblee_convocazione_check') then
+    alter table assemblee
+      add constraint assemblee_convocazione_check check (convocazione in (1, 2));
+  end if;
+end $$;
+
+-- 2) PRESENZE: registrabili dall'amministratore anche senza account
+--    collegato all'unità (proprietario presente solo in anagrafiche).
+--    Le policy esistenti non cambiano: il ramo "amministratore" di
+--    presenze_insert_condomino non guarda utente_id.
+alter table presenze alter column utente_id drop not null;
+
+alter table presenze
+  add column if not exists registrata_da uuid references utenti(id),
+  add column if not exists nota text;
+
+-- 3) PUNTI_ODG: conteggio dei voti per testa, oltre ai millesimi.
+alter table punti_odg
+  add column if not exists tally_n_favorevole int not null default 0,
+  add column if not exists tally_n_contrario int not null default 0,
+  add column if not exists tally_n_astenuto int not null default 0;
+
+-- Stesso trigger già esistente su "voti", esteso ai conteggi. Resta
+-- security definer: chi vota non ha permesso di scrivere su punti_odg.
+create or replace function aggiorna_tally_punto()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_punto_id uuid := coalesce(new.punto_id, old.punto_id);
+begin
+  update punti_odg p
+  set
+    tally_favorevole = coalesce(s.favorevole, 0),
+    tally_contrario = coalesce(s.contrario, 0),
+    tally_astenuto = coalesce(s.astenuto, 0),
+    tally_n_favorevole = coalesce(s.n_favorevole, 0),
+    tally_n_contrario = coalesce(s.n_contrario, 0),
+    tally_n_astenuto = coalesce(s.n_astenuto, 0)
+  from (
+    select
+      sum(millesimi_rappresentati) filter (where scelta = 'favorevole') as favorevole,
+      sum(millesimi_rappresentati) filter (where scelta = 'contrario') as contrario,
+      sum(millesimi_rappresentati) filter (where scelta = 'astenuto') as astenuto,
+      count(*) filter (where scelta = 'favorevole') as n_favorevole,
+      count(*) filter (where scelta = 'contrario') as n_contrario,
+      count(*) filter (where scelta = 'astenuto') as n_astenuto
+    from voti
+    where punto_id = v_punto_id
+  ) s
+  where p.id = v_punto_id;
+  return null;
+end;
+$$;
+
+-- Allineamento una tantum dei punti già votati prima di questa migrazione.
+update punti_odg p
+set
+  tally_n_favorevole = coalesce(s.n_favorevole, 0),
+  tally_n_contrario = coalesce(s.n_contrario, 0),
+  tally_n_astenuto = coalesce(s.n_astenuto, 0)
+from (
+  select
+    punto_id,
+    count(*) filter (where scelta = 'favorevole') as n_favorevole,
+    count(*) filter (where scelta = 'contrario') as n_contrario,
+    count(*) filter (where scelta = 'astenuto') as n_astenuto
+  from voti group by punto_id
+) s
+where p.id = s.punto_id;
+
+-- 4) Riepilogo del quorum costitutivo -------------------------
+-- Un condomino non può leggere le unità né le presenze altrui (policy
+-- "unita_select" / "presenze_select"), quindi il conteggio degli
+-- intervenuti va calcolato qui e restituito come solo aggregato.
+--
+-- Un'unità è "intervenuta" se ha una presenza ancora aperta (ora_uscita
+-- nulla) oppure se ha delegato il proprio voto a un'unità a sua volta
+-- presente: così i millesimi delegati sono contati una volta sola, senza
+-- dipendere da come è stato riempito presenze.millesimi_rappresentati.
+create or replace function public.assemblea_riepilogo_quorum(p_assemblea_id uuid)
+returns table (
+  unita_totali int,
+  millesimi_totali numeric,
+  unita_intervenute int,
+  millesimi_intervenuti numeric,
+  unita_presenti int,
+  unita_rappresentate int
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_condominio_id uuid;
+begin
+  select a.condominio_id into v_condominio_id from assemblee a where a.id = p_assemblea_id;
+  if v_condominio_id is null then
+    return;
+  end if;
+  if not (admin_possiede_condominio(v_condominio_id) or appartiene_condominio(v_condominio_id)) then
+    raise exception 'Non autorizzato a leggere il quorum di questa assemblea.';
+  end if;
+
+  return query
+  with presenti as (
+    select distinct pr.unita_id
+    from presenze pr
+    where pr.assemblea_id = p_assemblea_id and pr.ora_uscita is null
+  ),
+  rappresentate as (
+    select distinct d.unita_delegante_id as unita_id
+    from deleghe d
+    where d.assemblea_id = p_assemblea_id
+      and d.unita_delegataria_id in (select unita_id from presenti)
+      and d.unita_delegante_id not in (select unita_id from presenti)
+  ),
+  intervenute as (
+    select unita_id from presenti
+    union
+    select unita_id from rappresentate
+  )
+  select
+    (select count(*)::int from unita u where u.condominio_id = v_condominio_id),
+    (select coalesce(sum(u.millesimi_proprieta), 0) from unita u where u.condominio_id = v_condominio_id),
+    (select count(*)::int from intervenute),
+    (select coalesce(sum(u.millesimi_proprieta), 0)
+       from unita u join intervenute i on i.unita_id = u.id),
+    (select count(*)::int from presenti),
+    (select count(*)::int from rappresentate);
+end;
+$$;
+
+grant execute on function assemblea_riepilogo_quorum(uuid) to authenticated;
+
+-- 5) FIRME DEL VERBALE ----------------------------------------
+create table if not exists firme_verbale (
+  id uuid primary key default gen_random_uuid(),
+  assemblea_id uuid not null references assemblee(id) on delete cascade,
+  nominativo text not null,
+  email text not null,
+  ruolo text not null default 'altro'
+    check (ruolo in ('presidente', 'segretario', 'amministratore', 'altro')),
+  -- token opaco nel link di conferma inviato per email
+  token text not null unique,
+  -- impronta SHA-256 di "token:codice": il codice non è mai in chiaro
+  otp_hash text,
+  otp_scadenza timestamptz,
+  otp_tentativi int not null default 0,
+  otp_inviato_il timestamptz,
+  richiesta_inviata_il timestamptz,
+  confermato_il timestamptz,
+  -- percorso del file effettivamente confermato: se il verbale viene
+  -- sostituito, si vede che la conferma riguardava un'altra versione
+  verbale_url_confermato text,
+  created_at timestamptz not null default now(),
+  unique (assemblea_id, email)
+);
+
+create index if not exists idx_firme_verbale_assemblea on firme_verbale(assemblea_id);
+
+alter table firme_verbale enable row level security;
+
+-- Solo l'amministratore dell'assemblea: la riga contiene il token e
+-- l'impronta del codice, che un condomino non deve poter leggere.
+-- I condòmini vedono chi ha confermato tramite firme_verbale_pubbliche.
+-- Il flusso pubblico di conferma (chi riceve l'email può non avere un
+-- account) passa dal client service-role lato server, come il webhook Stripe.
+drop policy if exists "firme_verbale_admin" on firme_verbale;
+create policy "firme_verbale_admin" on firme_verbale
+  for all using (ruolo_corrente() = 'amministratore' and admin_gestisce_assemblea(assemblea_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_gestisce_assemblea(assemblea_id));
+
+create or replace function public.firme_verbale_pubbliche(p_assemblea_id uuid)
+returns table (
+  nominativo text,
+  ruolo text,
+  richiesta_inviata boolean,
+  confermato_il timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select f.nominativo, f.ruolo, f.richiesta_inviata_il is not null, f.confermato_il
+  from firme_verbale f
+  join assemblee a on a.id = f.assemblea_id
+  where f.assemblea_id = p_assemblea_id
+    and (admin_possiede_condominio(a.condominio_id) or appartiene_condominio(a.condominio_id))
+  order by f.created_at;
+$$;
+
+grant execute on function firme_verbale_pubbliche(uuid) to authenticated;
+
+-- 6) SONDAGGI --------------------------------------------------
+create table if not exists sondaggi (
+  id uuid primary key default gen_random_uuid(),
+  condominio_id uuid not null references condomini(id) on delete cascade,
+  domanda text not null,
+  descrizione text,
+  scadenza timestamptz,
+  -- true: il risultato "in testa" si legge sui millesimi invece che sulle teste
+  ponderato boolean not null default false,
+  stato text not null default 'aperto' check (stato in ('aperto', 'chiuso')),
+  creato_da uuid not null references utenti(id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_sondaggi_condominio on sondaggi(condominio_id);
+
+create table if not exists sondaggio_opzioni (
+  id uuid primary key default gen_random_uuid(),
+  sondaggio_id uuid not null references sondaggi(id) on delete cascade,
+  testo text not null,
+  ordine int not null default 1
+);
+
+create index if not exists idx_sondaggio_opzioni_sondaggio on sondaggio_opzioni(sondaggio_id);
+
+create table if not exists sondaggio_risposte (
+  id uuid primary key default gen_random_uuid(),
+  sondaggio_id uuid not null references sondaggi(id) on delete cascade,
+  opzione_id uuid not null references sondaggio_opzioni(id) on delete cascade,
+  unita_id uuid not null references unita(id) on delete cascade,
+  utente_id uuid not null references utenti(id) on delete cascade,
+  -- snapshot dei millesimi al momento della risposta, come per "voti"
+  millesimi_rappresentati numeric(7,3) not null default 0,
+  created_at timestamptz not null default now(),
+  -- una unità = una risposta, modificabile finché il sondaggio è aperto
+  unique (sondaggio_id, unita_id)
+);
+
+create index if not exists idx_sondaggio_risposte_sondaggio on sondaggio_risposte(sondaggio_id);
+
+alter table sondaggi enable row level security;
+alter table sondaggio_opzioni enable row level security;
+alter table sondaggio_risposte enable row level security;
+
+-- Helper sullo stile di admin_gestisce_* già presenti in questo file.
+create or replace function public.admin_gestisce_sondaggio(sondaggio uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.sondaggi s
+    where s.id = sondaggio and admin_possiede_condominio(s.condominio_id)
+  );
+$$;
+
+create or replace function public.sondaggio_visibile(sondaggio uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.sondaggi s
+    where s.id = sondaggio
+      and (admin_possiede_condominio(s.condominio_id) or appartiene_condominio(s.condominio_id))
+  );
+$$;
+
+-- Una risposta è ammessa solo se il sondaggio è ancora aperto (e non
+-- scaduto), l'opzione appartiene a quel sondaggio e l'unità appartiene al
+-- condominio del sondaggio: controlli che non si possono esprimere con un
+-- vincolo di tabella e che devono valere anche per le chiamate dirette
+-- all'API, non solo per quelle che passano dall'interfaccia.
+create or replace function public.sondaggio_risposta_ammessa(
+  p_sondaggio_id uuid,
+  p_opzione_id uuid,
+  p_unita_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.sondaggi s
+    join public.sondaggio_opzioni o on o.sondaggio_id = s.id and o.id = p_opzione_id
+    join public.unita u on u.condominio_id = s.condominio_id and u.id = p_unita_id
+    where s.id = p_sondaggio_id
+      and s.stato = 'aperto'
+      and (s.scadenza is null or s.scadenza > now())
+  );
+$$;
+
+grant execute on function admin_gestisce_sondaggio(uuid) to authenticated;
+grant execute on function sondaggio_visibile(uuid) to authenticated;
+grant execute on function sondaggio_risposta_ammessa(uuid, uuid, uuid) to authenticated;
+
+drop policy if exists "sondaggi_select" on sondaggi;
+create policy "sondaggi_select" on sondaggi
+  for select using (
+    admin_possiede_condominio(condominio_id) or appartiene_condominio(condominio_id)
+  );
+
+drop policy if exists "sondaggi_write_admin" on sondaggi;
+create policy "sondaggi_write_admin" on sondaggi
+  for all using (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id));
+
+drop policy if exists "sondaggio_opzioni_select" on sondaggio_opzioni;
+create policy "sondaggio_opzioni_select" on sondaggio_opzioni
+  for select using (sondaggio_visibile(sondaggio_id));
+
+drop policy if exists "sondaggio_opzioni_write_admin" on sondaggio_opzioni;
+create policy "sondaggio_opzioni_write_admin" on sondaggio_opzioni
+  for all using (ruolo_corrente() = 'amministratore' and admin_gestisce_sondaggio(sondaggio_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_gestisce_sondaggio(sondaggio_id));
+
+-- Come per i voti, un condomino vede solo la propria risposta: il dato
+-- aggregato passa da sondaggio_risultati.
+drop policy if exists "sondaggio_risposte_select" on sondaggio_risposte;
+create policy "sondaggio_risposte_select" on sondaggio_risposte
+  for select using (
+    utente_id = auth.uid()
+    or possiede_unita(unita_id)
+    or admin_gestisce_sondaggio(sondaggio_id)
+  );
+
+drop policy if exists "sondaggio_risposte_insert" on sondaggio_risposte;
+create policy "sondaggio_risposte_insert" on sondaggio_risposte
+  for insert with check (
+    utente_id = auth.uid()
+    and possiede_unita(unita_id)
+    and sondaggio_risposta_ammessa(sondaggio_id, opzione_id, unita_id)
+  );
+
+drop policy if exists "sondaggio_risposte_update" on sondaggio_risposte;
+create policy "sondaggio_risposte_update" on sondaggio_risposte
+  for update using (
+    utente_id = auth.uid()
+    and possiede_unita(unita_id)
+    and sondaggio_risposta_ammessa(sondaggio_id, opzione_id, unita_id)
+  )
+  with check (
+    utente_id = auth.uid()
+    and possiede_unita(unita_id)
+    and sondaggio_risposta_ammessa(sondaggio_id, opzione_id, unita_id)
+  );
+
+drop policy if exists "sondaggio_risposte_delete" on sondaggio_risposte;
+create policy "sondaggio_risposte_delete" on sondaggio_risposte
+  for delete using (
+    (utente_id = auth.uid() and sondaggio_risposta_ammessa(sondaggio_id, opzione_id, unita_id))
+    or (ruolo_corrente() = 'amministratore' and admin_gestisce_sondaggio(sondaggio_id))
+  );
+
+create or replace function public.sondaggio_risultati(p_sondaggio_id uuid)
+returns table (opzione_id uuid, risposte int, millesimi numeric)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select r.opzione_id, count(*)::int, coalesce(sum(r.millesimi_rappresentati), 0)
+  from sondaggio_risposte r
+  join sondaggi s on s.id = r.sondaggio_id
+  where r.sondaggio_id = p_sondaggio_id
+    and (admin_possiede_condominio(s.condominio_id) or appartiene_condominio(s.condominio_id))
+  group by r.opzione_id;
+$$;
+
+grant execute on function sondaggio_risultati(uuid) to authenticated;

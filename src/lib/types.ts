@@ -81,7 +81,8 @@ export type TipoSoggetto =
   | "nudo_proprietario"
   | "usufruttuario"
   | "conduttore"
-  | "comodatario";
+  | "comodatario"
+  | "assegnatario";
 
 export type UnitaProprietario = {
   id: string;
@@ -114,8 +115,76 @@ export type Assemblea = {
   data_assemblea: string;
   tipo: TipoAssemblea;
   stato: StatoAssemblea;
+  /** 1 = prima convocazione, 2 = seconda: cambia le soglie di quorum (art. 1136 c.c.). */
+  convocazione: number;
+  luogo: string | null;
   verbale_url: string | null;
   link_videoconferenza: string | null;
+  created_at: string;
+};
+
+export type ModalitaPresenza = "presenza" | "remoto" | "delega";
+
+export type Presenza = {
+  id: string;
+  assemblea_id: string;
+  unita_id: string;
+  utente_id: string | null;
+  modalita: ModalitaPresenza;
+  millesimi_rappresentati: number;
+  ora_ingresso: string;
+  ora_uscita: string | null;
+  registrata_da: string | null;
+  nota: string | null;
+};
+
+export type RuoloFirmatario = "presidente" | "segretario" | "amministratore" | "altro";
+
+export type FirmaVerbale = {
+  id: string;
+  assemblea_id: string;
+  nominativo: string;
+  email: string;
+  ruolo: RuoloFirmatario;
+  token: string;
+  otp_hash: string | null;
+  otp_scadenza: string | null;
+  otp_tentativi: number;
+  otp_inviato_il: string | null;
+  richiesta_inviata_il: string | null;
+  confermato_il: string | null;
+  verbale_url_confermato: string | null;
+  created_at: string;
+};
+
+export type StatoSondaggio = "aperto" | "chiuso";
+
+export type Sondaggio = {
+  id: string;
+  condominio_id: string;
+  domanda: string;
+  descrizione: string | null;
+  scadenza: string | null;
+  ponderato: boolean;
+  stato: StatoSondaggio;
+  creato_da: string;
+  created_at: string;
+};
+
+export type SondaggioOpzione = {
+  id: string;
+  sondaggio_id: string;
+  testo: string;
+  ordine: number;
+};
+
+export type SondaggioRisposta = {
+  id: string;
+  sondaggio_id: string;
+  opzione_id: string;
+  unita_id: string;
+  utente_id: string;
+  millesimi_rappresentati: number;
   created_at: string;
 };
 
@@ -134,6 +203,10 @@ export type PuntoOdg = {
   tally_favorevole: number;
   tally_contrario: number;
   tally_astenuto: number;
+  /** Conteggio dei voti per testa: serve alla "maggioranza degli intervenuti". */
+  tally_n_favorevole: number;
+  tally_n_contrario: number;
+  tally_n_astenuto: number;
   created_at: string;
 };
 

@@ -8,6 +8,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, FormGrid, Input, Select, Textarea } from "@/components/ui/input";
 import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { REGOLE_DELIBERATIVE, TIPI_MAGGIORANZA } from "@/lib/quorum";
 
 export function PuntoOdgForm({
   assembleaId,
@@ -54,12 +55,15 @@ export function PuntoOdgForm({
             </Field>
             <Field
               id="tipo_maggioranza"
-              label="Maggioranza"
-              hint="Indicativa: l'esito è calcolato a maggioranza semplice dei voti espressi."
+              label="Maggioranza richiesta"
+              hint="Determina il quorum deliberativo mostrato durante la votazione (art. 1136 c.c.)."
             >
               <Select name="tipo_maggioranza" defaultValue="semplice">
-                <option value="semplice">Semplice</option>
-                <option value="qualificata_intervenuti">Qualificata intervenuti</option>
+                {TIPI_MAGGIORANZA.map((tipo) => (
+                  <option key={tipo} value={tipo}>
+                    {REGOLE_DELIBERATIVE[tipo].etichetta}
+                  </option>
+                ))}
               </Select>
             </Field>
           </FormGrid>
