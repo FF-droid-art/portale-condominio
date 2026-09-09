@@ -2946,3 +2946,160 @@ create policy "documenti_delete_admin" on storage.objects for delete using (
       and segnalazione_gestibile(((storage.foldername(name))[2])::uuid))
   )
 );
+
+-- ============================================================
+-- Migrazione: notifiche granulari, solleciti di morosità,
+--             riconciliazione bancaria
+-- Da applicare manualmente su Supabase (SQL Editor). Idempotente.
+--
+-- Tre funzionalità con perimetri di visibilità diversi, che è la
+-- ragione per cui le policy qui sotto non si somigliano tra loro:
+--
+--  1) PREFERENZE DI NOTIFICA. Righe personali: ognuno vede e scrive
+--     soltanto le proprie, nemmeno l'amministratore le legge. Il
+--     modello è a OPT-OUT (vedi `src/lib/notifiche.ts`): l'assenza di
+--     una riga vale "attiva", quindi la tabella parte vuota e chi non
+--     tocca nulla continua a ricevere gli avvisi come prima.
+--     `tipo_evento` è `text` e non un enum: aggiungere un evento deve
+--     restare una modifica di codice, non una migrazione del database.
+--
+--  2) SOLLECITI. Storico delle lettere di sollecito inviate a una
+--     unità. Lo scrive l'amministratore; il condòmino può LEGGERE i
+--     solleciti che riguardano le proprie unità — sapere che cosa
+--     risulta a proprio carico è informazione sua, e nasconderla
+--     genererebbe solo telefonate. `livello` 1/2/3 = promemoria,
+--     sollecito, diffida.
+--
+--  3) MOVIMENTI BANCARI. Le righe dell'estratto conto importato in CSV,
+--     con l'eventuale ripartizione a cui sono state abbinate. Qui la
+--     visibilità è del solo amministratore: l'estratto conto contiene i
+--     movimenti di tutti, e mostrarlo a un condòmino significherebbe
+--     fargli vedere chi ha pagato e chi no.
+--     L'unicità su (condominio_id, import_hash) è ciò che rende
+--     l'importazione ripetibile: ricaricare lo stesso file non crea
+--     doppioni, e caricare il mese successivo che si sovrappone di
+--     qualche giorno reimporta solo le righe nuove.
+-- ============================================================
+
+-- 1) PREFERENZE DI NOTIFICA -----------------------------------
+create table if not exists preferenze_notifiche (
+  id uuid primary key default gen_random_uuid(),
+  utente_id uuid not null references utenti(id) on delete cascade,
+  tipo_evento text not null,
+  email_attiva boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (utente_id, tipo_evento)
+);
+
+create index if not exists idx_preferenze_notifiche_utente
+  on preferenze_notifiche(utente_id);
+
+-- 2) SOLLECITI ------------------------------------------------
+create table if not exists solleciti (
+  id uuid primary key default gen_random_uuid(),
+  condominio_id uuid not null references condomini(id) on delete cascade,
+  unita_id uuid not null references unita(id) on delete cascade,
+  livello int not null check (livello in (1, 2, 3)),
+  importo_totale numeric(10,2) not null check (importo_totale >= 0),
+  data_invio date not null default current_date,
+  inviato_da uuid not null references utenti(id),
+  note text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_solleciti_condominio on solleciti(condominio_id);
+create index if not exists idx_solleciti_unita on solleciti(unita_id, data_invio desc);
+
+-- 3) MOVIMENTI BANCARI ----------------------------------------
+create table if not exists movimenti_bancari (
+  id uuid primary key default gen_random_uuid(),
+  condominio_id uuid not null references condomini(id) on delete cascade,
+  data date not null,
+  -- segnato: positivo = accredito (soldi entrati), negativo = addebito
+  importo numeric(12,2) not null,
+  descrizione text not null default '',
+  -- CRO/TRN o altro riferimento dell'operazione, quando la banca lo esporta
+  riferimento text,
+  ripartizione_id uuid references ripartizioni(id) on delete set null,
+  stato text not null default 'da_abbinare'
+    check (stato in ('da_abbinare', 'abbinato', 'ignorato')),
+  -- impronta della riga del CSV: rende l'importazione idempotente
+  import_hash text not null,
+  created_at timestamptz not null default now(),
+  unique (condominio_id, import_hash)
+);
+
+create index if not exists idx_movimenti_condominio on movimenti_bancari(condominio_id, data);
+create index if not exists idx_movimenti_stato on movimenti_bancari(stato);
+create index if not exists idx_movimenti_ripartizione on movimenti_bancari(ripartizione_id);
+
+-- 4) RLS ------------------------------------------------------
+alter table preferenze_notifiche enable row level security;
+alter table solleciti enable row level security;
+alter table movimenti_bancari enable row level security;
+
+-- ---- PREFERENZE DI NOTIFICA ----
+-- Nessun riferimento al ruolo: queste righe sono personali e basta.
+drop policy if exists "preferenze_notifiche_select" on preferenze_notifiche;
+create policy "preferenze_notifiche_select" on preferenze_notifiche
+  for select using (utente_id = auth.uid());
+
+drop policy if exists "preferenze_notifiche_write" on preferenze_notifiche;
+create policy "preferenze_notifiche_write" on preferenze_notifiche
+  for all using (utente_id = auth.uid())
+  with check (utente_id = auth.uid());
+
+-- ---- SOLLECITI ----
+drop policy if exists "solleciti_select" on solleciti;
+create policy "solleciti_select" on solleciti
+  for select using (
+    admin_possiede_condominio(condominio_id) or possiede_unita(unita_id)
+  );
+
+drop policy if exists "solleciti_write_admin" on solleciti;
+create policy "solleciti_write_admin" on solleciti
+  for all using (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id));
+
+-- ---- MOVIMENTI BANCARI ----
+-- Solo l'amministratore, anche in lettura: vedi il commento in testa.
+drop policy if exists "movimenti_bancari_admin" on movimenti_bancari;
+create policy "movimenti_bancari_admin" on movimenti_bancari
+  for all using (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id));
+
+-- Una riga abbinata deve puntare a una ripartizione dello stesso
+-- condominio: un movimento del condominio A non può saldare una quota
+-- del condominio B. Il vincolo non è esprimibile con un check di
+-- tabella (serve una join), quindi è un trigger, e come per le
+-- prenotazioni vale anche per le chiamate dirette all'API.
+create or replace function public.verifica_abbinamento_movimento()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_condominio uuid;
+begin
+  if new.ripartizione_id is null then
+    return new;
+  end if;
+
+  select s.condominio_id into v_condominio
+  from ripartizioni r
+  join spese s on s.id = r.spesa_id
+  where r.id = new.ripartizione_id;
+
+  if v_condominio is distinct from new.condominio_id then
+    raise exception 'La quota abbinata appartiene a un altro condominio.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_movimenti_abbinamento on movimenti_bancari;
+create trigger trg_movimenti_abbinamento
+  before insert or update on movimenti_bancari
+  for each row execute function public.verifica_abbinamento_movimento();

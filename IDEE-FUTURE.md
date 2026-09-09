@@ -30,6 +30,27 @@ DACH (Germania/Austria) l'equivalente tecnico di riferimento è **EBICS**,
 usato da prodotti come andromeda.ONE/Immoware24, nel caso in futuro
 serva un confronto.
 
+### Limite emerso implementando la funzione (2026-09-09)
+
+L'abbinamento è **uno a uno**: un movimento bancario salda una e una sola
+ripartizione, di importo identico al centesimo. Restano quindi da
+sistemare a mano due casi che nella pratica capitano spesso:
+
+- il **versamento cumulativo**, con cui un condomino salda in un colpo
+  due o tre rate arretrate (l'importo non corrisponde a nessuna singola
+  quota, quindi nessuna proposta scatta);
+- il **pagamento parziale o in acconto**, che oggi non ha modo di essere
+  registrato: una quota è pagata o non lo è, non esiste un residuo.
+
+Il secondo è il più serio, e non è un limite del CSV: è il modello dati
+delle `ripartizioni`, che non prevede pagamenti parziali. Sistemarlo
+significherebbe introdurre una tabella di incassi collegati alla quota
+(molti a uno) e ricalcolare lo stato del pagamento dalla somma degli
+incassi — un cambiamento che tocca stato patrimoniale, solleciti,
+rendiconto e pagamento online, quindi da pianificare a parte. L'open
+banking non lo risolverebbe: cambierebbe solo da dove arrivano i
+movimenti.
+
 ## Altri spunti emersi ma non ancora pianificati
 
 - **App mobile nativa o PWA con notifiche push** — oggi il portale è solo

@@ -375,3 +375,49 @@ export type Voto = {
   millesimi_rappresentati: number;
   data_voto: string;
 };
+
+/* -------------------------------------------------------------------------
+   Notifiche, solleciti, riconciliazione bancaria
+   ------------------------------------------------------------------------- */
+
+/** Una riga per (utente, evento). L'assenza di riga vale "attiva": opt-out. */
+export type PreferenzaNotifica = {
+  id: string;
+  utente_id: string;
+  /** Uno dei `TipoEvento` di `@/lib/notifiche`; text in schema, non enum. */
+  tipo_evento: string;
+  email_attiva: boolean;
+  created_at: string;
+};
+
+/** 1 = primo sollecito bonario, 2 = sollecito, 3 = diffida. */
+export type LivelloSollecito = 1 | 2 | 3;
+
+export type Sollecito = {
+  id: string;
+  condominio_id: string;
+  unita_id: string;
+  livello: LivelloSollecito;
+  importo_totale: number;
+  data_invio: string;
+  inviato_da: string;
+  note: string | null;
+  created_at: string;
+};
+
+export type StatoMovimento = "da_abbinare" | "abbinato" | "ignorato";
+
+export type MovimentoBancario = {
+  id: string;
+  condominio_id: string;
+  data: string;
+  /** Positivo = accredito, negativo = addebito. */
+  importo: number;
+  descrizione: string;
+  riferimento: string | null;
+  ripartizione_id: string | null;
+  stato: StatoMovimento;
+  /** Impronta della riga del CSV: rende ripetibile l'importazione. */
+  import_hash: string;
+  created_at: string;
+};

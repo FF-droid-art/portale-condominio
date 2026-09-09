@@ -4,11 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ArrowRightLeft,
+  Bell,
   Building2,
   CalendarClock,
+  CalendarDays,
   DoorOpen,
   FileSpreadsheet,
   FolderOpen,
+  HandCoins,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -52,6 +56,8 @@ const NAV_ADMIN: GruppoNav[] = [
     voci: [
       { href: "/admin/condomini", label: "Condomini", icon: Building2 },
       { href: "/admin/spese", label: "Spese", icon: Wallet },
+      { href: "/admin/riconciliazione", label: "Riconciliazione", icon: ArrowRightLeft },
+      { href: "/admin/calendario", label: "Calendario", icon: CalendarDays },
       { href: "/admin/assemblee", label: "Assemblee", icon: CalendarClock },
       { href: "/admin/sondaggi", label: "Sondaggi", icon: MessagesSquare },
     ],
@@ -68,6 +74,7 @@ const NAV_ADMIN: GruppoNav[] = [
   {
     titolo: "Amministrazione",
     voci: [
+      { href: "/admin/solleciti", label: "Morosità", icon: HandCoins },
       { href: "/admin/utenti", label: "Utenti", icon: Users },
       { href: "/admin/importa", label: "Importa dati", icon: FileSpreadsheet },
     ],
@@ -79,6 +86,7 @@ const NAV_CONDOMINO: GruppoNav[] = [
   {
     titolo: "Partecipa",
     voci: [
+      { href: "/area-riservata/calendario", label: "Calendario", icon: CalendarDays },
       { href: "/area-riservata/assemblee", label: "Assemblee", icon: CalendarClock },
       { href: "/area-riservata/sondaggi", label: "Sondaggi", icon: MessagesSquare },
     ],
@@ -90,6 +98,10 @@ const NAV_CONDOMINO: GruppoNav[] = [
       { href: "/area-riservata/spazi", label: "Spazi comuni", icon: DoorOpen },
       { href: "/area-riservata/documenti", label: "Documenti", icon: FolderOpen },
     ],
+  },
+  {
+    titolo: "Impostazioni",
+    voci: [{ href: "/area-riservata/notifiche", label: "Notifiche", icon: Bell }],
   },
 ];
 

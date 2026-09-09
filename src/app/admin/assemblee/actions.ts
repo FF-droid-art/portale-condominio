@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { resend, MITTENTE_EMAIL } from "@/lib/resend";
+import { inviaNotificaEmailMultipla } from "@/lib/notifiche-invio";
 import { formatDataOra } from "@/lib/format";
 
 export type StatoForm = { errore?: string } | undefined;
@@ -31,6 +31,9 @@ export async function creaAssemblea(
   await notificaNuovaAssemblea(condominioId, dataAssemblea, tipo);
 
   revalidatePath("/admin/assemblee");
+  // L'assemblea appena convocata è anche un evento del calendario.
+  revalidatePath("/admin/calendario");
+  revalidatePath("/area-riservata/calendario");
 }
 
 // Invio best-effort: se Resend fallisce (o non è ancora configurato) non deve
@@ -48,21 +51,19 @@ async function notificaNuovaAssemblea(condominioId: string, dataAssemblea: strin
 
     const { data: proprietari } = await supabase
       .from("unita_proprietari")
-      .select("utente:utente_id(email)")
+      .select("utente_id, utente:utente_id(email)")
       .in("unita_id", unitaIds);
 
-    const email = Array.from(
-      new Set(
-        (proprietari ?? [])
-          .map((p) => (p.utente as unknown as { email: string } | null)?.email)
-          .filter((e): e is string => !!e)
-      )
-    );
-    if (!email.length) return;
-
-    await resend.emails.send({
-      from: MITTENTE_EMAIL,
-      to: email,
+    // L'invio passa dal cancello delle preferenze (`nuova_assemblea`): chi non
+    // ha toccato le impostazioni riceve l'avviso come prima.
+    await inviaNotificaEmailMultipla({
+      tipoEvento: "nuova_assemblea",
+      destinatari: (proprietari ?? [])
+        .map((p) => ({
+          utenteId: (p.utente_id as string | null) ?? "",
+          email: (p.utente as unknown as { email: string } | null)?.email ?? "",
+        }))
+        .filter((d) => d.utenteId && d.email),
       subject: "Nuova assemblea convocata",
       html: `<p>È stata convocata una nuova assemblea ${tipo} per il ${formatDataOra(dataAssemblea)}.</p><p>Accedi al portale per i dettagli.</p>`,
     });

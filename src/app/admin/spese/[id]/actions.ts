@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { resend, MITTENTE_EMAIL } from "@/lib/resend";
+import { inviaNotifichePersonalizzate } from "@/lib/notifiche-invio";
 import { formatValuta } from "@/lib/format";
 
 export type StatoForm = { errore?: string } | undefined;
@@ -109,7 +109,9 @@ export async function generaRipartizioni(
 }
 
 // Invio best-effort: se Resend fallisce non deve bloccare la generazione
-// delle ripartizioni, che a questo punto è già avvenuta.
+// delle ripartizioni, che a questo punto è già avvenuta. L'invio passa dal
+// cancello delle preferenze (`avviso_pagamento`): chi non ha toccato nulla lo
+// riceve come prima, chi lo ha disattivato no.
 async function notificaRipartizioni(
   spesaId: string,
   righe: { unita_id: string; importo_dovuto: number }[]
@@ -124,29 +126,29 @@ async function notificaRipartizioni(
 
     const { data: proprietari } = await supabase
       .from("unita_proprietari")
-      .select("unita_id, utente:utente_id(email)")
+      .select("unita_id, utente_id, utente:utente_id(email)")
       .in("unita_id", righe.map((r) => r.unita_id));
 
     const importoPerUnita = new Map(righe.map((r) => [r.unita_id, r.importo_dovuto]));
 
-    await Promise.all(
-      (proprietari ?? [])
+    await inviaNotifichePersonalizzate({
+      tipoEvento: "avviso_pagamento",
+      messaggi: (proprietari ?? [])
         .map((p) => ({
+          utenteId: (p.utente_id as string | null) ?? "",
+          email: (p.utente as unknown as { email: string } | null)?.email ?? "",
           unitaId: p.unita_id as string,
-          email: (p.utente as unknown as { email: string } | null)?.email,
         }))
-        .filter((p): p is { unitaId: string; email: string } => !!p.email)
-        .map((p) =>
-          resend.emails.send({
-            from: MITTENTE_EMAIL,
-            to: p.email,
-            subject: "Nuova spesa ripartita",
-            html: `<p>Ti è stata addebitata una quota di ${formatValuta(
-              importoPerUnita.get(p.unitaId) ?? 0
-            )} per la spesa "${spesa?.descrizione ?? ""}".</p><p>Accedi al portale per i dettagli.</p>`,
-          })
-        )
-    );
+        .filter((p) => p.utenteId && p.email)
+        .map((p) => ({
+          utenteId: p.utenteId,
+          email: p.email,
+          subject: "Nuova spesa ripartita",
+          html: `<p>Ti è stata addebitata una quota di ${formatValuta(
+            importoPerUnita.get(p.unitaId) ?? 0
+          )} per la spesa "${spesa?.descrizione ?? ""}".</p><p>Accedi al portale per i dettagli.</p>`,
+        })),
+    });
   } catch {
     // ignorato di proposito, vedi commento sopra
   }

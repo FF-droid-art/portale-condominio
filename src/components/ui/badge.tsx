@@ -99,6 +99,26 @@ const MAPPE_STATO: Record<string, Record<string, { label: string; variant: Varia
     confermata: { label: "Confermata", variant: "success" },
     annullata: { label: "Annullata", variant: "neutral" },
   },
+  livello_sollecito: {
+    "1": { label: "Primo sollecito", variant: "neutral" },
+    "2": { label: "Sollecito", variant: "warning" },
+    "3": { label: "Diffida", variant: "danger" },
+  },
+  stato_movimento: {
+    da_abbinare: { label: "Da abbinare", variant: "warning" },
+    abbinato: { label: "Abbinato", variant: "success" },
+    ignorato: { label: "Ignorato", variant: "neutral" },
+  },
+  confidenza_abbinamento: {
+    alta: { label: "Corrispondenza certa", variant: "success" },
+    media: { label: "Da verificare", variant: "warning" },
+  },
+  tipo_evento_calendario: {
+    assemblea: { label: "Assemblea", variant: "accent" },
+    manutenzione: { label: "Manutenzione", variant: "neutral" },
+    prenotazione: { label: "Prenotazione", variant: "outline" },
+    scadenza_pagamento: { label: "Scadenza", variant: "warning" },
+  },
   tipo_soggetto: {
     proprietario: { label: "Proprietario", variant: "neutral" },
     nudo_proprietario: { label: "Nudo proprietario", variant: "neutral" },
