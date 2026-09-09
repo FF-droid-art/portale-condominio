@@ -1,10 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Home, User, Users } from "lucide-react";
+import { FileDown, Home, User, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { PageBody, PageHeader } from "@/components/ui/page-header";
-import { Card, Section } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardHeaderText,
+  CardTitle,
+  CardDescription,
+  Section,
+} from "@/components/ui/card";
 import { Badge, StatoBadge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { formatValuta } from "@/lib/format";
+import { oggiLocale } from "@/lib/fuso";
+import { riepilogaPartite, type PartitaUnita } from "@/lib/documenti/stato-patrimoniale";
 import {
   Table,
   TableHeader,
@@ -38,13 +49,45 @@ export default async function UnitaDettaglioPage({
 
   if (!unita) notFound();
 
-  const { data: proprietari } = await supabase
-    .from("unita_proprietari")
-    .select(
-      "*, utente:utente_id(nome, cognome, email), anagrafica:anagrafica_id(nominativo, email, telefono)"
-    )
-    .eq("unita_id", id)
-    .order("created_at");
+  const [{ data: proprietari }, { data: ripartizioniData }] = await Promise.all([
+    supabase
+      .from("unita_proprietari")
+      .select(
+        "*, utente:utente_id(nome, cognome, email), anagrafica:anagrafica_id(nominativo, email, telefono)"
+      )
+      .eq("unita_id", id)
+      .order("created_at"),
+    supabase
+      .from("ripartizioni")
+      .select(
+        "importo_dovuto, stato_pagamento, data_scadenza, data_pagamento, codice_avviso, spesa:spesa_id(descrizione, categoria, data_spesa)"
+      )
+      .eq("unita_id", id),
+  ]);
+
+  // Stessa aggregazione usata dal PDF: la scheda e il documento non possono
+  // raccontare due situazioni diverse.
+  const annoRiferimento = Number(oggiLocale().slice(0, 4));
+  const partite: PartitaUnita[] = (
+    (ripartizioniData ?? []) as unknown as {
+      importo_dovuto: number;
+      stato_pagamento: string;
+      data_scadenza: string | null;
+      data_pagamento: string | null;
+      codice_avviso: string | null;
+      spesa: { descrizione: string; categoria: string; data_spesa: string } | null;
+    }[]
+  ).map((r) => ({
+    descrizione: r.spesa?.descrizione ?? "Ripartizione",
+    categoria: r.spesa?.categoria ?? "—",
+    dataCompetenza: r.data_scadenza ?? r.spesa?.data_spesa ?? "",
+    dataScadenza: r.data_scadenza,
+    importo: r.importo_dovuto,
+    statoPagamento: r.stato_pagamento,
+    dataPagamento: r.data_pagamento,
+    codiceAvviso: r.codice_avviso,
+  }));
+  const riepilogo = riepilogaPartite(partite, annoRiferimento);
 
   // Soggetti attivi (occupanti attuali) vs storici (ex proprietari/inquilini,
   // attivo = false). I legami "vecchio stile" senza flag restano attivi.
@@ -113,6 +156,79 @@ export default async function UnitaDettaglioPage({
             <dd className="cifre text-sm font-medium">{attivi.length}</dd>
           </div>
         </dl>
+      </Card>
+
+      {/* Situazione contabile: serve soprattutto quando l'unità sta per essere
+          venduta, e allora quello che conta non è il totale ma la sua
+          ripartizione per anno (art. 63 disp. att. c.c.). */}
+      <Card>
+        <CardHeader>
+          <CardHeaderText>
+            <CardTitle>Situazione contabile</CardTitle>
+            <CardDescription>
+              Quote a carico dell&apos;unità e insoluto per anno di competenza, come richiesto
+              in vista di un rogito.
+            </CardDescription>
+          </CardHeaderText>
+          <Button
+            href={`/admin/unita/${unita.id}/stato-patrimoniale`}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            size="sm"
+          >
+            <FileDown className="size-4" aria-hidden="true" />
+            Scarica il PDF
+          </Button>
+        </CardHeader>
+
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Insoluto totale
+            </dt>
+            <dd
+              className={
+                riepilogo.insoluto.totale > 0
+                  ? "cifre text-sm font-semibold text-warning"
+                  : "cifre text-sm font-semibold text-success"
+              }
+            >
+              {formatValuta(riepilogo.insoluto.totale)}
+            </dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Anno in corso ({annoRiferimento})
+            </dt>
+            <dd className="cifre text-sm font-medium">
+              {formatValuta(riepilogo.insoluto.annoCorrente)}
+            </dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Anno precedente ({annoRiferimento - 1})
+            </dt>
+            <dd className="cifre text-sm font-medium">
+              {formatValuta(riepilogo.insoluto.annoPrecedente)}
+            </dd>
+          </div>
+          <div className="flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Anni anteriori
+            </dt>
+            <dd className="cifre text-sm font-medium">
+              {formatValuta(riepilogo.insoluto.anniAnteriori)}
+            </dd>
+          </div>
+        </dl>
+
+        <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+          Chi subentra nei diritti del condòmino risponde in solido dei contributi
+          dell&apos;anno in corso e di quello precedente (art. 63 disp. att. c.c.): le somme
+          più vecchie restano a carico del solo proprietario attuale. Il PDF è generato dai
+          dati del portale e va verificato prima della consegna.
+        </p>
       </Card>
 
       <Section

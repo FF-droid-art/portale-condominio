@@ -188,6 +188,153 @@ export type SondaggioRisposta = {
   created_at: string;
 };
 
+/* -------------------------------------------------------------------------
+   Manutenzione, fornitori, archivio documenti, spazi comuni
+   ------------------------------------------------------------------------- */
+
+export type CategoriaFornitore =
+  | "ascensore"
+  | "caldaia_riscaldamento"
+  | "idraulico"
+  | "elettricista"
+  | "pulizie"
+  | "giardinaggio"
+  | "antincendio"
+  | "assicurazione"
+  | "edile"
+  | "altro";
+
+export type Fornitore = {
+  id: string;
+  condominio_id: string;
+  nome: string;
+  categoria: CategoriaFornitore;
+  referente: string | null;
+  email: string | null;
+  telefono: string | null;
+  partita_iva: string | null;
+  note: string | null;
+  attivo: boolean;
+  created_at: string;
+};
+
+export type Periodicita =
+  | "nessuna"
+  | "mensile"
+  | "trimestrale"
+  | "semestrale"
+  | "annuale"
+  | "biennale";
+
+export type StatoManutenzione = "programmata" | "completata" | "annullata";
+
+export type ManutenzioneProgrammata = {
+  id: string;
+  condominio_id: string;
+  fornitore_id: string | null;
+  spesa_id: string | null;
+  titolo: string;
+  descrizione: string | null;
+  data_prossima: string;
+  periodicita: Periodicita;
+  stato: StatoManutenzione;
+  data_completamento: string | null;
+  costo_previsto: number | null;
+  created_at: string;
+};
+
+export type CategoriaSegnalazione =
+  | "ascensore"
+  | "riscaldamento"
+  | "idraulico"
+  | "elettrico"
+  | "pulizie"
+  | "parti_comuni"
+  | "infiltrazioni"
+  | "altro";
+
+export type PrioritaSegnalazione = "bassa" | "normale" | "alta";
+export type StatoSegnalazione = "aperta" | "in_corso" | "chiusa";
+
+export type Segnalazione = {
+  id: string;
+  condominio_id: string;
+  /** null = parti comuni. */
+  unita_id: string | null;
+  titolo: string;
+  descrizione: string;
+  categoria: CategoriaSegnalazione;
+  priorita: PrioritaSegnalazione;
+  stato: StatoSegnalazione;
+  fornitore_id: string | null;
+  aperta_da: string;
+  foto_url: string | null;
+  chiusa_il: string | null;
+  created_at: string;
+  aggiornata_il: string;
+};
+
+export type SegnalazioneNota = {
+  id: string;
+  segnalazione_id: string;
+  autore_id: string;
+  testo: string;
+  /** Nota di servizio dell'amministratore: non visibile al condòmino. */
+  interna: boolean;
+  created_at: string;
+};
+
+export type CategoriaDocumento =
+  | "regolamento"
+  | "planimetria"
+  | "polizza"
+  | "bilancio"
+  | "contratto"
+  | "certificazione"
+  | "altro";
+
+export type DocumentoCondominio = {
+  id: string;
+  condominio_id: string;
+  titolo: string;
+  descrizione: string | null;
+  categoria: CategoriaDocumento;
+  percorso: string;
+  nome_file: string;
+  dimensione_byte: number | null;
+  mime_type: string | null;
+  caricato_da: string;
+  created_at: string;
+};
+
+export type SpazioComune = {
+  id: string;
+  condominio_id: string;
+  nome: string;
+  descrizione: string | null;
+  /** Prenotazioni che possono coesistere nella stessa fascia oraria. */
+  posti: number;
+  ora_apertura: string;
+  ora_chiusura: string;
+  durata_massima_ore: number | null;
+  attivo: boolean;
+  created_at: string;
+};
+
+export type StatoPrenotazione = "confermata" | "annullata";
+
+export type PrenotazioneSpazio = {
+  id: string;
+  spazio_id: string;
+  unita_id: string;
+  utente_id: string;
+  inizio: string;
+  fine: string;
+  note: string | null;
+  stato: StatoPrenotazione;
+  created_at: string;
+};
+
 export type PuntoOdg = {
   id: string;
   assemblea_id: string;

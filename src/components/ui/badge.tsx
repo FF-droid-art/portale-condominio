@@ -75,6 +75,30 @@ const MAPPE_STATO: Record<string, Record<string, { label: string; variant: Varia
     amministratore: { label: "Amministratore", variant: "accent" },
     condomino: { label: "Condòmino", variant: "neutral" },
   },
+  stato_segnalazione: {
+    aperta: { label: "Aperta", variant: "warning" },
+    in_corso: { label: "In corso", variant: "accent" },
+    chiusa: { label: "Chiusa", variant: "success" },
+  },
+  priorita_segnalazione: {
+    bassa: { label: "Priorità bassa", variant: "neutral" },
+    normale: { label: "Priorità normale", variant: "outline" },
+    alta: { label: "Priorità alta", variant: "danger" },
+  },
+  stato_manutenzione: {
+    programmata: { label: "Programmata", variant: "accent" },
+    completata: { label: "Completata", variant: "success" },
+    annullata: { label: "Annullata", variant: "neutral" },
+  },
+  urgenza_scadenza: {
+    scaduta: { label: "Scaduta", variant: "danger" },
+    in_scadenza: { label: "In scadenza", variant: "warning" },
+    futura: { label: "In programma", variant: "neutral" },
+  },
+  stato_prenotazione: {
+    confermata: { label: "Confermata", variant: "success" },
+    annullata: { label: "Annullata", variant: "neutral" },
+  },
   tipo_soggetto: {
     proprietario: { label: "Proprietario", variant: "neutral" },
     nudo_proprietario: { label: "Nudo proprietario", variant: "neutral" },

@@ -6,15 +6,19 @@ import { usePathname } from "next/navigation";
 import {
   Building2,
   CalendarClock,
+  DoorOpen,
   FileSpreadsheet,
+  FolderOpen,
   LayoutDashboard,
   LogOut,
   Menu,
   MessagesSquare,
   Receipt,
   ShieldCheck,
+  TriangleAlert,
   Users,
   Wallet,
+  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -53,6 +57,15 @@ const NAV_ADMIN: GruppoNav[] = [
     ],
   },
   {
+    titolo: "Servizi",
+    voci: [
+      { href: "/admin/segnalazioni", label: "Segnalazioni", icon: TriangleAlert },
+      { href: "/admin/manutenzioni", label: "Fornitori e manutenzioni", icon: Wrench },
+      { href: "/admin/spazi", label: "Spazi comuni", icon: DoorOpen },
+      { href: "/admin/documenti", label: "Documenti", icon: FolderOpen },
+    ],
+  },
+  {
     titolo: "Amministrazione",
     voci: [
       { href: "/admin/utenti", label: "Utenti", icon: Users },
@@ -62,11 +75,20 @@ const NAV_ADMIN: GruppoNav[] = [
 ];
 
 const NAV_CONDOMINO: GruppoNav[] = [
+  { voci: [{ href: "/area-riservata", label: "Riepilogo", icon: LayoutDashboard }] },
   {
+    titolo: "Partecipa",
     voci: [
-      { href: "/area-riservata", label: "Riepilogo", icon: LayoutDashboard },
       { href: "/area-riservata/assemblee", label: "Assemblee", icon: CalendarClock },
       { href: "/area-riservata/sondaggi", label: "Sondaggi", icon: MessagesSquare },
+    ],
+  },
+  {
+    titolo: "Servizi",
+    voci: [
+      { href: "/area-riservata/segnalazioni", label: "Segnalazioni", icon: TriangleAlert },
+      { href: "/area-riservata/spazi", label: "Spazi comuni", icon: DoorOpen },
+      { href: "/area-riservata/documenti", label: "Documenti", icon: FolderOpen },
     ],
   },
 ];
