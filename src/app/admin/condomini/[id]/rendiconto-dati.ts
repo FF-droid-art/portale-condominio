@@ -4,9 +4,12 @@ import { getUtenteCorrente } from "@/lib/supabase/dal";
 import type { Documento } from "@/lib/documenti/modello";
 import {
   costruisciRendiconto,
+  type ManutenzioneRendiconto,
   type QuotaRendiconto,
+  type SegnalazioneRendiconto,
   type UscitaRendiconto,
 } from "@/lib/documenti/rendiconto";
+import type { PrioritaSegnalazione, StatoSegnalazione } from "@/lib/types";
 
 type RipartizioneAnno = {
   importo_dovuto: number;
@@ -27,6 +30,13 @@ type RipartizioneAnno = {
  * Le ripartizioni si prendono per unità e non per spesa perché è la strada che
  * la RLS conosce meglio, e perché le unità del condominio sono comunque già
  * necessarie: sono le righe della tabella per unità del prospetto.
+ *
+ * Spese e ripartizioni si leggono TUTTE, non solo quelle dell'anno: il
+ * riepilogo finanziario al 31 dicembre è una fotografia cumulata (cassa da
+ * sempre, crediti di ogni annualità) e con i soli movimenti dell'anno non si
+ * potrebbe calcolare. Segnalazioni e manutenzioni non entrano nei conti: sono
+ * i "rapporti in corso e questioni pendenti" che l'art. 1130-bis chiede alla
+ * nota sintetica esplicativa.
  */
 export async function costruisciDocumentoRendiconto(
   condominioId: string,
@@ -48,10 +58,15 @@ export async function costruisciDocumentoRendiconto(
     .eq("condominio_id", condominioId);
   const unitaIds = (unitaData ?? []).map((u) => u.id as string);
 
-  const [{ data: speseData }, { data: ripartizioniData }] = await Promise.all([
+  const [
+    { data: speseData },
+    { data: ripartizioniData },
+    { data: segnalazioniData },
+    { data: manutenzioniData },
+  ] = await Promise.all([
     supabase
       .from("spese")
-      .select("descrizione, categoria, data_spesa, importo_totale")
+      .select("descrizione, categoria, data_spesa, importo_totale, fornitore")
       .eq("condominio_id", condominioId),
     unitaIds.length
       ? supabase
@@ -61,12 +76,21 @@ export async function costruisciDocumentoRendiconto(
           )
           .in("unita_id", unitaIds)
       : Promise.resolve({ data: [] }),
+    supabase
+      .from("segnalazioni")
+      .select("titolo, stato, priorita")
+      .eq("condominio_id", condominioId),
+    supabase
+      .from("manutenzioni_programmate")
+      .select("titolo, data_prossima, stato")
+      .eq("condominio_id", condominioId),
   ]);
 
   const uscite: UscitaRendiconto[] = (speseData ?? []).map((s) => ({
     dataSpesa: s.data_spesa as string,
     categoria: s.categoria as string,
     descrizione: s.descrizione as string,
+    fornitore: (s.fornitore as string | null) ?? null,
     importo: s.importo_totale as number,
   }));
 
@@ -83,6 +107,21 @@ export async function costruisciDocumentoRendiconto(
     })
   );
 
+  const segnalazioni: SegnalazioneRendiconto[] = (segnalazioniData ?? []).map((s) => ({
+    titolo: s.titolo as string,
+    stato: s.stato as StatoSegnalazione,
+    priorita: s.priorita as PrioritaSegnalazione,
+  }));
+
+  const manutenzioni: ManutenzioneRendiconto[] = (manutenzioniData ?? []).map((m) => ({
+    titolo: m.titolo as string,
+    dataProssima: m.data_prossima as string,
+    stato: m.stato as string,
+  }));
+
+  // Chi scarica il rendiconto è l'amministratore di quel condominio: la RLS non
+  // lascerebbe passare nessun altro. Il suo nome finisce in testa al documento,
+  // non solo nella riga di firma.
   const utente = await getUtenteCorrente();
 
   return costruisciRendiconto({
@@ -94,6 +133,8 @@ export async function costruisciDocumentoRendiconto(
     anno,
     uscite,
     quote,
+    segnalazioni,
+    manutenzioni,
     amministratore: utente
       ? { nome: utente.nome, cognome: utente.cognome, email: utente.email }
       : null,

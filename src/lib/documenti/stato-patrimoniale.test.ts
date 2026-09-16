@@ -17,6 +17,10 @@ function testoDi(blocchi: Blocco[]): string {
           return `${b.etichetta}: ${b.valore}`;
         case "elenco":
           return b.voci.join("\n");
+        case "tabella":
+          return [b.colonne.map((c) => c.intestazione), ...b.righe, ...(b.totali ? [b.totali] : [])]
+            .map((r) => r.join(" | "))
+            .join("\n");
         default:
           return b.testo;
       }

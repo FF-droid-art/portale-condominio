@@ -99,23 +99,45 @@ export async function costruisciDocumentoAssemblea(
     });
   }
 
-  const [{ data: riepilogoData }, { data: presenzeData }, { data: delegheData }] =
-    await Promise.all([
-      supabase
-        .rpc("assemblea_riepilogo_quorum", { p_assemblea_id: assembleaId })
-        .maybeSingle(),
-      supabase
-        .from("presenze")
-        .select("modalita, millesimi_rappresentati, unita:unita_id(identificativo, millesimi_proprieta)")
-        .eq("assemblea_id", assembleaId)
-        .is("ora_uscita", null),
-      supabase
-        .from("deleghe")
-        .select(
-          "unita_delegante:unita_delegante_id(identificativo), utente_delegato:utente_delegato_id(nome, cognome)"
-        )
-        .eq("assemblea_id", assembleaId),
-    ]);
+  const [
+    { data: riepilogoData },
+    { data: presenzeData },
+    { data: delegheData },
+    { data: unitaData },
+    { data: firmeData },
+  ] = await Promise.all([
+    supabase.rpc("assemblea_riepilogo_quorum", { p_assemblea_id: assembleaId }).maybeSingle(),
+    supabase
+      .from("presenze")
+      // Anche chi è uscito prima della fine: nell'elenco dei presenti non
+      // compare, ma non è nemmeno un assente ai fini dell'impugnazione, quindi
+      // le due liste si ricavano dalla stessa query filtrando qui sotto.
+      .select(
+        "unita_id, modalita, millesimi_rappresentati, ora_uscita, unita:unita_id(identificativo, millesimi_proprieta)"
+      )
+      .eq("assemblea_id", assembleaId),
+    supabase
+      .from("deleghe")
+      .select(
+        "unita_delegante:unita_delegante_id(identificativo), utente_delegato:utente_delegato_id(nome, cognome)"
+      )
+      .eq("assemblea_id", assembleaId),
+    // Tutte le unità del condominio: gli assenti si ricavano per differenza
+    // dalle presenze, e vanno nel verbale perché per loro il termine di
+    // impugnazione decorre dalla comunicazione (art. 1137 c.c.).
+    supabase
+      .from("unita")
+      .select("id, identificativo, millesimi_proprieta")
+      .eq("condominio_id", assemblea.condominio_id)
+      .order("identificativo", { ascending: true }),
+    // Presidente e segretario sono già noti se l'amministratore li ha indicati
+    // tra i firmatari del verbale: meglio usare quei nomi che lasciare la
+    // riga vuota.
+    supabase
+      .from("firme_verbale")
+      .select("nominativo, ruolo")
+      .eq("assemblea_id", assembleaId),
+  ]);
 
   const riepilogo = (riepilogoData as Riepilogo | null) ?? {
     unita_totali: 0,
@@ -132,17 +154,31 @@ export async function costruisciDocumentoAssemblea(
     convocazione,
   });
 
-  const presenze = (presenzeData ?? []).map((p) => {
-    const unita = p.unita as unknown as {
-      identificativo: string;
-      millesimi_proprieta: number;
-    } | null;
-    return {
-      identificativo: unita?.identificativo ?? "—",
-      modalita: p.modalita as string,
-      millesimi: unita?.millesimi_proprieta ?? p.millesimi_rappresentati,
-    };
-  });
+  const presenze = (presenzeData ?? [])
+    .filter((p) => p.ora_uscita === null)
+    .map((p) => {
+      const unita = p.unita as unknown as {
+        identificativo: string;
+        millesimi_proprieta: number;
+      } | null;
+      return {
+        identificativo: unita?.identificativo ?? "—",
+        modalita: p.modalita as string,
+        millesimi: unita?.millesimi_proprieta ?? p.millesimi_rappresentati,
+      };
+    });
+
+  const unitaIntervenute = new Set((presenzeData ?? []).map((p) => p.unita_id as string));
+  const assenti = (unitaData ?? [])
+    .filter((u) => !unitaIntervenute.has(u.id as string))
+    .map((u) => ({
+      identificativo: u.identificativo as string,
+      millesimi: u.millesimi_proprieta as number,
+    }));
+
+  const firme = (firmeData ?? []) as { nominativo: string; ruolo: string }[];
+  const nominativoPerRuolo = (ruolo: string) =>
+    firme.find((f) => f.ruolo === ruolo)?.nominativo?.trim() || null;
 
   const deleghe = (delegheData ?? []).map((d) => {
     const delegante = d.unita_delegante as unknown as { identificativo: string } | null;
@@ -170,7 +206,12 @@ export async function costruisciDocumentoAssemblea(
       raggiunto: quorumCostitutivo.raggiunto,
       riferimento: quorumCostitutivo.riferimento,
     },
+    cariche: {
+      presidente: nominativoPerRuolo("presidente"),
+      segretario: nominativoPerRuolo("segretario"),
+    },
     presenze,
+    assenti,
     deleghe,
     punti: punti.map((p) => {
       // A votazione chiusa contano i valori congelati nell'esito, altrimenti i
@@ -193,6 +234,11 @@ export async function costruisciDocumentoAssemblea(
         descrizione: p.descrizione,
         tipoMaggioranza: p.tipo_maggioranza,
         esito: p.esito,
+        // I conteggi per testa non hanno un equivalente congelato nell'esito:
+        // l'unica fonte sono i tally, che restano fermi a votazione chiusa.
+        favorevoliUnita: p.tally_n_favorevole,
+        contrariUnita: p.tally_n_contrario,
+        astenutiUnita: p.tally_n_astenuto,
         favorevoliMillesimi,
         contrariMillesimi: chiusa ? p.esito_contrario ?? 0 : p.tally_contrario,
         astenutiMillesimi: chiusa ? p.esito_astenuto ?? 0 : p.tally_astenuto,

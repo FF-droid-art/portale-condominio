@@ -27,6 +27,10 @@ function testoDi(blocchi: Blocco[]): string {
           return `${b.etichetta}: ${b.valore}`;
         case "elenco":
           return b.voci.join("\n");
+        case "tabella":
+          return [b.colonne.map((c) => c.intestazione), ...b.righe]
+            .map((r) => r.join(" | "))
+            .join("\n");
         default:
           return b.testo;
       }
@@ -90,7 +94,8 @@ describe("costruisciConvocazione", () => {
     const testo = testoDi(doc.blocchi);
     expect(testo).toContain("Da definire");
     expect(testo).toContain("Nessun punto all'ordine del giorno");
-    expect(doc.blocchi.some((b) => b.tipo === "elenco")).toBe(false);
+    // L'unico elenco che resta è quello delle avvertenze di legge.
+    expect(testo).not.toContain("1. Approvazione del rendiconto");
   });
 
   test("il link videoconferenza compare solo se presente", () => {
@@ -124,8 +129,52 @@ describe("costruisciConvocazione", () => {
   });
 
   test("dichiara sempre di essere una bozza generata dal portale", () => {
-    const nota = costruisciConvocazione(CONVOCAZIONE_BASE).blocchi.find((b) => b.tipo === "nota");
-    expect(nota?.tipo === "nota" && nota.testo).toContain("Bozza generata automaticamente");
+    const note = costruisciConvocazione(CONVOCAZIONE_BASE).blocchi.filter((b) => b.tipo === "nota");
+    expect(note.map((n) => (n.tipo === "nota" ? n.testo : "")).join("\n")).toContain(
+      "Bozza generata automaticamente"
+    );
+  });
+
+  test("riporta gli obblighi di legge sull'avviso: termine, mezzi e perimetro dell'odg", () => {
+    const testo = testoDi(costruisciConvocazione(CONVOCAZIONE_BASE).blocchi);
+    expect(testo).toContain("almeno cinque giorni prima");
+    expect(testo).toContain("posta elettronica certificata");
+    expect(testo).toContain("art. 66 c. 3 disp. att. c.c.");
+    expect(testo).toContain("soltanto sugli argomenti indicati nell'ordine del giorno");
+  });
+
+  test("spiega i limiti della delega dell'art. 67 e offre il modulo da compilare", () => {
+    const testo = testoDi(costruisciConvocazione(CONVOCAZIONE_BASE).blocchi);
+    expect(testo).toContain("delega scritta");
+    expect(testo).toContain("un quinto dei condòmini");
+    expect(testo).toContain("non può essere conferita all'amministratore");
+    expect(testo).toContain("art. 67 disp. att. c.c.");
+    expect(testo).toContain("Modulo di delega");
+  });
+
+  test("la regola sulla seconda convocazione compare solo nell'avviso di prima", () => {
+    const prima = testoDi(costruisciConvocazione(CONVOCAZIONE_BASE).blocchi);
+    expect(prima).toContain("non può tenersi nel medesimo giorno solare della prima");
+    expect(prima).toContain("entro dieci giorni dalla prima");
+
+    const seconda = testoDi(
+      costruisciConvocazione({
+        ...CONVOCAZIONE_BASE,
+        assemblea: { ...CONVOCAZIONE_BASE.assemblea, convocazione: 2 },
+      }).blocchi
+    );
+    expect(seconda).not.toContain("medesimo giorno solare");
+  });
+
+  test("avverte se all'assemblea mancano meno di cinque giorni", () => {
+    const tardi = testoDi(
+      costruisciConvocazione({ ...CONVOCAZIONE_BASE, generatoIl: "2026-10-12T09:00:00.000Z" })
+        .blocchi
+    );
+    expect(tardi).toContain("mancano meno di 5 giorni");
+
+    const inTempo = testoDi(costruisciConvocazione(CONVOCAZIONE_BASE).blocchi);
+    expect(inTempo).not.toContain("mancano meno di");
   });
 });
 
@@ -146,10 +195,12 @@ const VERBALE_BASE: DatiVerbale = {
     raggiunto: true,
     riferimento: "art. 1136 c. 3 c.c.",
   },
+  cariche: { presidente: null, segretario: null },
   presenze: [
     { identificativo: "Scala A - Int. 1", modalita: "presenza", millesimi: 120 },
     { identificativo: "Scala A - Int. 2", modalita: "remoto", millesimi: 100 },
   ],
+  assenti: [{ identificativo: "Scala B - Int. 9", millesimi: 80 }],
   deleghe: [{ delegante: "Scala B - Int. 5", delegato: "Mario Bianchi" }],
   punti: [
     {
@@ -157,6 +208,9 @@ const VERBALE_BASE: DatiVerbale = {
       descrizione: "Approvazione del rendiconto",
       tipoMaggioranza: "semplice",
       esito: "approvato",
+      favorevoliUnita: 4,
+      contrariUnita: 1,
+      astenutiUnita: 1,
       favorevoliMillesimi: 400,
       contrariMillesimi: 100,
       astenutiMillesimi: 20,
@@ -186,20 +240,90 @@ describe("costruisciVerbale", () => {
     expect(testo).toContain("NON raggiunge il quorum costitutivo");
   });
 
-  test("elenca presenti e deleghe", () => {
-    const testo = testoDi(costruisciVerbale(VERBALE_BASE).blocchi);
+  test("elenca presenti, deleghe e assenti in tabella", () => {
+    const doc = costruisciVerbale(VERBALE_BASE);
+    const testo = testoDi(doc.blocchi);
     expect(testo).toContain("Scala A - Int. 1");
     expect(testo).toContain("in presenza");
     expect(testo).toContain("da remoto");
-    expect(testo).toContain("Scala B - Int. 5 rappresentata da Mario Bianchi");
+    expect(testo).toContain("Scala B - Int. 5 | Mario Bianchi");
+    expect(testo).toContain("Risultano assenti");
+    expect(testo).toContain("Scala B - Int. 9");
+
+    const tabelle = doc.blocchi.filter((b) => b.tipo === "tabella");
+    expect(tabelle.length).toBeGreaterThanOrEqual(4); // presenti, deleghe, assenti, voti
   });
 
-  test("senza presenze né deleghe non stampa le sezioni relative", () => {
+  test("senza presenze, deleghe o assenti non stampa le sezioni relative", () => {
     const testo = testoDi(
-      costruisciVerbale({ ...VERBALE_BASE, presenze: [], deleghe: [] }).blocchi
+      costruisciVerbale({ ...VERBALE_BASE, presenze: [], deleghe: [], assenti: [] }).blocchi
     );
-    expect(testo).not.toContain("Elenco dei presenti");
-    expect(testo).not.toContain("Deleghe");
+    expect(testo).not.toContain("Fatto l'appello");
+    expect(testo).not.toContain("deleghe scritte");
+    expect(testo).not.toContain("Risultano assenti");
+  });
+
+  test("apre con la nomina di presidente e segretario, prima della costituzione", () => {
+    const doc = costruisciVerbale(VERBALE_BASE);
+    const titoli = doc.blocchi
+      .filter((b) => b.tipo === "sottotitolo")
+      .map((b) => (b.tipo === "sottotitolo" ? b.testo : ""));
+    expect(titoli.indexOf("Nomina del presidente e del segretario")).toBeLessThan(
+      titoli.indexOf("Costituzione dell'assemblea")
+    );
+    expect(titoli.indexOf("Costituzione dell'assemblea")).toBeLessThan(
+      titoli.indexOf("Trattazione dell'ordine del giorno")
+    );
+  });
+
+  test("usa i nominativi dei firmatari quando ci sono, altrimenti lascia da compilare", () => {
+    const conNomi = costruisciVerbale({
+      ...VERBALE_BASE,
+      cariche: { presidente: "Luca Verdi", segretario: "Sara Neri" },
+    });
+    const testo = testoDi(conNomi.blocchi);
+    expect(testo).toContain("Luca Verdi");
+    expect(testo).toContain("Sara Neri");
+    expect(testo).not.toContain("rigenerare il documento");
+
+    const senzaNomi = testoDi(costruisciVerbale(VERBALE_BASE).blocchi);
+    expect(senzaNomi).toContain("_____");
+    expect(senzaNomi).toContain("rigenerare il documento");
+  });
+
+  test("riporta l'ordine del giorno anche in testa al verbale", () => {
+    const elenco = costruisciVerbale(VERBALE_BASE).blocchi.find((b) => b.tipo === "elenco");
+    expect(elenco?.tipo === "elenco" && elenco.voci[0]).toBe("1. Approvazione del rendiconto");
+  });
+
+  test("i voti sono riportati sia per teste sia per millesimi", () => {
+    const testo = testoDi(costruisciVerbale(VERBALE_BASE).blocchi);
+    expect(testo).toContain("Voto | Unità | Millesimi");
+    expect(testo).toContain("Favorevoli | 4 | 400,000");
+    expect(testo).toContain("Contrari | 1 | 100,000");
+    expect(testo).toContain("Astenuti | 1 | 20,000");
+  });
+
+  test("chiude con la formula di rito, il rinvio al registro e il termine di impugnazione", () => {
+    const testo = testoDi(costruisciVerbale(VERBALE_BASE).blocchi);
+    expect(testo).toContain("dichiara sciolta l'assemblea alle ore");
+    expect(testo).toContain("registro dei verbali");
+    expect(testo).toContain("art. 1130 n. 7 c.c.");
+    expect(testo).toContain("entro trenta giorni");
+    expect(testo).toContain("art. 1137 c.c.");
+  });
+
+  test("avverte se l'assemblea non è ancora conclusa", () => {
+    const inCorso = testoDi(
+      costruisciVerbale({
+        ...VERBALE_BASE,
+        assemblea: { ...VERBALE_BASE.assemblea, stato: "in_corso" },
+      }).blocchi
+    );
+    expect(inCorso).toContain("non risulta ancora conclusa");
+    expect(testoDi(costruisciVerbale(VERBALE_BASE).blocchi)).not.toContain(
+      "non risulta ancora conclusa"
+    );
   });
 
   test("un punto approvato senza quorum di legge viene segnalato", () => {
@@ -233,5 +357,16 @@ describe("costruisciVerbale", () => {
     const testo = testoDi(doc.blocchi);
     expect(testo).toContain("Il presidente");
     expect(testo).toContain("Il segretario");
+    expect(testo).toContain("L'amministratore");
+  });
+
+  test("la mancata costituzione viene verbalizzata, non nascosta", () => {
+    const testo = testoDi(
+      costruisciVerbale({
+        ...VERBALE_BASE,
+        quorum: { ...VERBALE_BASE.quorum, raggiunto: false },
+      }).blocchi
+    );
+    expect(testo).toContain("Della mancata costituzione si dà atto a verbale");
   });
 });
