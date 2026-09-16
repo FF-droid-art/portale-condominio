@@ -30,6 +30,16 @@
 
 do $$
 declare
+  -- ====================================================================
+  -- SCRIVI QUI L'EMAIL DELL'ACCOUNT CON CUI FAI LOGIN NEL PORTALE.
+  -- Il condominio demo viene intestato a quell'amministratore: se lo
+  -- intesti a un altro account, tu non lo vedi (l'RLS lo nasconde) e le
+  -- sue pagine rispondono "404 pagina non trovata".
+  -- Lasciando la stringa vuota usa il primo amministratore registrato,
+  -- che con più account admin è quasi sempre quello sbagliato.
+  -- ====================================================================
+  v_email_admin text := '';
+
   v_admin uuid;
   v_cond  uuid;
   u1 uuid; u2 uuid; u3 uuid; u4 uuid; u5 uuid; u6 uuid;
@@ -41,10 +51,18 @@ declare
   seg1 uuid;
 begin
   -- Utente amministratore a cui intestare il condominio demo.
-  select id into v_admin from utenti where ruolo = 'amministratore'
-    order by created_at limit 1;
-  if v_admin is null then
-    raise exception 'Nessun utente amministratore: registrane uno dal portale e riprova.';
+  if v_email_admin <> '' then
+    select id into v_admin from utenti
+      where lower(email) = lower(v_email_admin) and ruolo = 'amministratore';
+    if v_admin is null then
+      raise exception 'Nessun amministratore con email "%". Controlla la mail in cima al file.', v_email_admin;
+    end if;
+  else
+    select id into v_admin from utenti where ruolo = 'amministratore'
+      order by created_at limit 1;
+    if v_admin is null then
+      raise exception 'Nessun utente amministratore: registrane uno dal portale e riprova.';
+    end if;
   end if;
 
   if exists (select 1 from condomini where nome = 'Condominio Demo — Via Verdi 10') then
@@ -212,10 +230,25 @@ begin
     (v_admin, 'nuovo_documento', false)
   on conflict (utente_id, tipo_evento) do nothing;
 
-  raise notice 'Dati demo creati. Condominio: % (id %)', 'Condominio Demo — Via Verdi 10', v_cond;
+  raise notice 'Dati demo creati. Condominio % intestato a %',
+    v_cond, (select email from utenti where id = v_admin);
 end $$;
 
 -- ============================================================
+-- A CHI È INTESTATO? Se le pagine del condominio demo rispondono
+-- "404 pagina non trovata", quasi sempre è intestato a un account
+-- diverso da quello con cui hai fatto login. Per vederlo:
+--
+-- select c.nome, u.email as intestato_a
+-- from condomini c left join utenti u on u.id = c.amministratore_id;
+--
+-- Per riassegnarlo all'account giusto (metti la TUA email di login):
+--
+-- update condomini
+-- set amministratore_id = (select id from utenti where email = 'tua@email.it')
+-- where nome like 'Condominio Demo%';
+--
+-- ------------------------------------------------------------
 -- Per cancellare tutti i dati demo e ripartire da zero, togli il
 -- commento dalla riga qui sotto ed eseguila (il ON DELETE CASCADE
 -- porta via unità, spese, quote, assemblea, segnalazioni, ecc.):
