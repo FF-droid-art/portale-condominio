@@ -13,7 +13,13 @@ const ROUTE_PUBBLICHE = ["/login", "/registrazione", "/recupera-password"];
 // prima richiesta arriva qui senza sessione (va tollerata) ma una volta che
 // il client stabilisce la sessione di recupero l'utente risulta "loggato" e
 // non va rimandato altrove, altrimenti non potrebbe mai completare il form.
-const ROUTE_ACCESSIBILI_SENZA_LOGIN = ["/", "/reimposta-password", ...ROUTE_PUBBLICHE];
+const ROUTE_ACCESSIBILI_SENZA_LOGIN = [
+  "/",
+  "/reimposta-password",
+  "/privacy",
+  "/cookie",
+  ...ROUTE_PUBBLICHE,
+];
 
 // Prefissi raggiungibili senza login perché indirizzati a persone che non
 // hanno (e non devono avere) un account: "/firma-verbale/<token>" è il

@@ -1,6 +1,6 @@
 # INFORMATIVA SULL'USO DEI COOKIE
 
-**Versione:** bozza 1.0 — **Ultimo aggiornamento:** `[DATA]`
+**Versione:** bozza 1.0 — **Ultimo aggiornamento:** `27 ottobre 2026 (bozza demo)`
 
 > **AVVISO — DOCUMENTO IN BOZZA.** Da sottoporre a verifica legale prima della pubblicazione.
 
@@ -79,4 +79,4 @@ Può in ogni momento eliminare i cookie o impedirne l'installazione agendo sulle
 
 ## 6. Riferimenti e contatti
 
-Per qualsiasi chiarimento: `[EMAIL PRIVACY]`. Per il quadro completo dei trattamenti si rinvia all'**Informativa sul trattamento dei dati personali** disponibile su `[URL]/privacy`.
+Per qualsiasi chiarimento: `privacy@portalecondominio-demo.it`. Per il quadro completo dei trattamenti si rinvia all'**Informativa sul trattamento dei dati personali** disponibile su `https://portale-condominio.vercel.app/privacy`.

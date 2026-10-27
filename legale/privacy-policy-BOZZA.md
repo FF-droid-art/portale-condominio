@@ -1,7 +1,7 @@
 # INFORMATIVA SUL TRATTAMENTO DEI DATI PERSONALI
 ### (artt. 13 e 14 Regolamento UE 2016/679 – GDPR)
 
-**Versione:** bozza 1.0 — **Ultimo aggiornamento:** `[DATA]`
+**Versione:** bozza 1.0 — **Ultimo aggiornamento:** `27 ottobre 2026 (bozza demo)`
 
 > **AVVISO — DOCUMENTO IN BOZZA.** Testo tecnico predisposto sulla base dei dati effettivamente trattati dal portale. Da sottoporre a verifica legale prima della pubblicazione.
 
@@ -9,16 +9,16 @@
 
 ## 1. Premessa: chi fa cosa
 
-Il portale `[NOME COMMERCIALE DEL SERVIZIO]` è uno strumento software utilizzato dagli **amministratori di condominio** per gestire i condomìni di cui hanno ricevuto incarico.
+Il portale `Portale Condominio` è uno strumento software utilizzato dagli **amministratori di condominio** per gestire i condomìni di cui hanno ricevuto incarico.
 
 Questo comporta una distinzione importante:
 
 - **Titolare del trattamento** dei dati dei condòmini è **l'amministratore di condominio** che utilizza il portale per il Suo condominio. È lui che decide quali dati raccogliere, per quali finalità e per quanto tempo conservarli, in esecuzione del mandato conferitogli dall'assemblea e degli obblighi che il codice civile gli impone.
-- **Responsabile del trattamento** ai sensi dell'art. 28 GDPR è **`[NOME TITOLARE / RAGIONE SOCIALE DEL GESTORE DEL PORTALE]`**, che fornisce la piattaforma e tratta i dati esclusivamente su istruzione documentata dell'amministratore, nei limiti dell'accordo di nomina sottoscritto con ciascun amministratore cliente.
+- **Responsabile del trattamento** ai sensi dell'art. 28 GDPR è **`Portale Condominio Demo S.r.l.`**, che fornisce la piattaforma e tratta i dati esclusivamente su istruzione documentata dell'amministratore, nei limiti dell'accordo di nomina sottoscritto con ciascun amministratore cliente.
 
 **Se Lei è un condòmino**: il titolare a cui rivolgersi per esercitare i Suoi diritti è il Suo amministratore di condominio. Trova i suoi recapiti nella sezione "Condominio" della Sua area riservata, oppure negli avvisi che ha ricevuto. Può comunque scrivere anche al gestore del portale all'indirizzo indicato al § 10: la richiesta sarà inoltrata senza ritardo all'amministratore competente.
 
-**Se Lei è un amministratore di condominio cliente del servizio**: per i dati del Suo account professionale (nome, cognome, email di accesso) e per la gestione del rapporto contrattuale con il portale, titolare del trattamento è `[NOME TITOLARE / RAGIONE SOCIALE]`. Per i dati dei Suoi condòmini, titolare è Lei.
+**Se Lei è un amministratore di condominio cliente del servizio**: per i dati del Suo account professionale (nome, cognome, email di accesso) e per la gestione del rapporto contrattuale con il portale, titolare del trattamento è `Portale Condominio Demo S.r.l.`. Per i dati dei Suoi condòmini, titolare è Lei.
 
 ---
 
@@ -26,12 +26,12 @@ Questo comporta una distinzione importante:
 
 | | |
 |---|---|
-| **Gestore del portale (responsabile del trattamento)** | `[NOME TITOLARE / RAGIONE SOCIALE]` |
-| **Sede legale** | `[INDIRIZZO COMPLETO]` |
-| **Partita IVA / Codice fiscale** | `[P.IVA]` |
-| **Email per questioni privacy** | `[EMAIL PRIVACY]` |
-| **PEC** | `[INDIRIZZO PEC]` |
-| **Responsabile della protezione dei dati (DPO)** | `[NOMINATO / NON NOMINATO — vedi domande aperte]` |
+| **Gestore del portale (responsabile del trattamento)** | `Portale Condominio Demo S.r.l.` |
+| **Sede legale** | `Via Esempio 1, 00100 Roma (RM)` |
+| **Partita IVA / Codice fiscale** | `00000000000 (dato di esempio)` |
+| **Email per questioni privacy** | `privacy@portalecondominio-demo.it` |
+| **PEC** | `portalecondominiodemo@pec.it` |
+| **Responsabile della protezione dei dati (DPO)** | `Non nominato — valutazione in corso, vedi sezione finale` |
 
 ---
 
@@ -148,7 +148,7 @@ Il personale tecnico del gestore del portale può accedere ai dati **solo per qu
 
 | Fornitore | Ruolo nel servizio | Sede | Dati trattati | Trasferimenti extra-UE |
 |---|---|---|---|---|
-| **Supabase, Inc.** | Database, autenticazione, archiviazione dei documenti | USA (infrastruttura su Amazon Web Services; regioni UE disponibili) | Tutti i dati del portale | DPA pubblico con Clausole Contrattuali Standard (moduli 2 e 3) ed elenco pubblico dei sub-responsabili. **Regione di hosting di questa installazione: `[DA VERIFICARE NEL PANNELLO SUPABASE]`** |
+| **Supabase, Inc.** | Database, autenticazione, archiviazione dei documenti | USA (infrastruttura su Amazon Web Services; regioni UE disponibili) | Tutti i dati del portale | DPA pubblico con Clausole Contrattuali Standard (moduli 2 e 3) ed elenco pubblico dei sub-responsabili. **Regione di hosting di questa installazione: `eu-central-1 (Francoforte) — dato di esempio, da confermare nel pannello`** |
 | **Vercel, Inc.** | Hosting dell'applicazione e consegna delle pagine | USA | Dati in transito durante l'uso del portale; log tecnici | DPA pubblico, Clausole Contrattuali Standard e UK Addendum; certificazione EU-U.S. Data Privacy Framework |
 | **Resend, Inc.** | Invio delle email transazionali del portale | USA | Indirizzo email del destinatario, oggetto e contenuto del messaggio | DPA pre-sottoscritto con Clausole Contrattuali Standard; adesione all'EU-U.S. Data Privacy Framework |
 | **Stripe** (Stripe Payments Europe Ltd. per i clienti europei) | Incasso delle quote condominiali online | Irlanda, con trasferimenti infragruppo verso Stripe, Inc. (USA) | Dati della transazione, dati della carta (raccolti e conservati **direttamente da Stripe**, mai dal portale) | Clausole Contrattuali Standard ed EU-U.S. Data Privacy Framework. Stripe agisce in parte come **autonomo titolare** per gli obblighi antiriciclaggio, antifrode e di normativa sui pagamenti che la legge impone direttamente a lui |
@@ -166,13 +166,13 @@ L'elenco aggiornato dei fornitori è mantenuto in questa informativa e nell'acco
 | Registri e documentazione contabile del condominio (spese, giustificativi, ripartizioni, rendiconti, movimenti) | **10 anni** dalla data della registrazione | Art. 1130-bis, comma 1, c.c. |
 | Verbali di assemblea e registro dei verbali | **10 anni** (allineati alla documentazione contabile; i verbali restano inoltre nella disponibilità del condominio) | Art. 1130-bis c.c.; artt. 1130 n. 7 e 1137 c.c. |
 | Registro di anagrafe condominiale (dati dei proprietari e dei titolari di diritti reali e di godimento) | Per tutta la durata del legame con l'unità e, successivamente, per **10 anni** in quanto elemento necessario a ricostruire le partite contabili | Artt. 1130 n. 6 e 1130-bis c.c. |
-| Solleciti, posizioni di morosità e relative comunicazioni | Fino alla definizione della posizione debitoria e comunque per il **termine di prescrizione applicabile** al credito, salvo contenzioso in corso | `[DA CONFERMARE IN SEDE LEGALE]` |
-| Account di accesso e preferenze di notifica | Per tutta la durata del rapporto, con cancellazione entro `[N]` mesi dalla cessazione | **Scelta aperta** |
-| Segnalazioni e note, con eventuali fotografie | `[N]` mesi/anni dalla chiusura della segnalazione | **Scelta aperta** |
-| Prenotazioni di spazi comuni | `[N]` mesi dalla data della prenotazione | **Scelta aperta** |
-| Sondaggi non deliberativi e relative risposte | `[N]` mesi dalla chiusura del sondaggio | **Scelta aperta** |
+| Solleciti, posizioni di morosità e relative comunicazioni | Fino alla definizione della posizione debitoria e comunque per il **termine di prescrizione applicabile** al credito, salvo contenzioso in corso | `10 anni dalla definizione della posizione (termine di prescrizione ordinario — da confermare in sede legale)` |
+| Account di accesso e preferenze di notifica | Per tutta la durata del rapporto, con cancellazione entro 30 giorni dalla cessazione | **Scelta aperta** |
+| Segnalazioni e note, con eventuali fotografie | 24 mesi dalla chiusura della segnalazione | **Scelta aperta** |
+| Prenotazioni di spazi comuni | 12 mesi dalla data della prenotazione | **Scelta aperta** |
+| Sondaggi non deliberativi e relative risposte | 24 mesi dalla chiusura del sondaggio | **Scelta aperta** |
 | Registrazioni di conferma del verbale (token, impronte dei codici, conferme) | Il token e l'impronta del codice perdono validità entro 15 minuti; il dato della conferma segue il verbale a cui si riferisce | — |
-| Log tecnici di hosting e database | Secondo le politiche di conservazione di Vercel e Supabase | `[DA VERIFICARE PRESSO I FORNITORI]` |
+| Log tecnici di hosting e database | Secondo le politiche di conservazione di Vercel e Supabase | `90 giorni circa (politiche standard dei fornitori — da confermare)` |
 
 Alla scadenza i dati sono cancellati oppure resi anonimi. **Nota di trasparenza:** allo stato attuale il portale non esegue una cancellazione automatica allo scadere dei termini; l'eliminazione avviene su iniziativa dell'amministratore titolare o del gestore su sua istruzione. *(Punto segnalato tra gli interventi da pianificare.)*
 
@@ -192,7 +192,7 @@ Lei può in qualsiasi momento:
 
 Lei può inoltre **disattivare autonomamente** le singole categorie di notifiche email dalla sezione "Notifiche" della Sua area riservata. Restano sempre attive le comunicazioni indispensabili all'accesso (recupero password, codici di conferma) e le comunicazioni che l'amministratore ha l'obbligo di legge di recapitarle, che in tal caso Le saranno inviate con altri mezzi.
 
-**Come esercitare i diritti.** Scrivendo all'amministratore del Suo condominio (titolare del trattamento) oppure, in subordine, a `[EMAIL PRIVACY]`. Il riscontro è dovuto **entro un mese**, prorogabile di due mesi in casi complessi. L'esercizio dei diritti è gratuito.
+**Come esercitare i diritti.** Scrivendo all'amministratore del Suo condominio (titolare del trattamento) oppure, in subordine, a `privacy@portalecondominio-demo.it`. Il riscontro è dovuto **entro un mese**, prorogabile di due mesi in casi complessi. L'esercizio dei diritti è gratuito.
 
 **Reclamo.** Se ritiene che il trattamento violi il GDPR, può proporre reclamo al **Garante per la protezione dei dati personali** (Piazza Venezia 11, 00187 Roma — garante@gpdp.it — protocollo@pec.gpdp.it — www.garanteprivacy.it) o ricorrere all'autorità giudiziaria.
 
@@ -206,7 +206,7 @@ Sono adottate le misure tecniche e organizzative descritte in dettaglio nell'All
 
 ## 11. Modifiche
 
-Questa informativa può essere aggiornata. La versione vigente è sempre pubblicata su `[URL]/privacy` con l'indicazione della data di ultimo aggiornamento. Le modifiche sostanziali sono comunicate via email agli utenti registrati.
+Questa informativa può essere aggiornata. La versione vigente è sempre pubblicata su `https://portale-condominio.vercel.app/privacy` con l'indicazione della data di ultimo aggiornamento. Le modifiche sostanziali sono comunicate via email agli utenti registrati.
 
 ---
 

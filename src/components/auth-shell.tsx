@@ -90,6 +90,17 @@ export function AuthShell({
           {piede && <div className="text-center text-sm text-white/70">{piede}</div>}
         </main>
       </div>
+
+      <footer className="relative px-4 py-5 text-center sm:px-6">
+        <nav aria-label="Informazioni legali" className="flex justify-center gap-4 text-xs text-white/50">
+          <Link href="/privacy" className="rounded hover:text-white/80">
+            Privacy
+          </Link>
+          <Link href="/cookie" className="rounded hover:text-white/80">
+            Cookie
+          </Link>
+        </nav>
+      </footer>
     </div>
   );
 }

@@ -225,6 +225,15 @@ export default async function Home() {
                 Password dimenticata
               </Link>
             </nav>
+            <nav aria-label="Informazioni legali" className="flex flex-col gap-2 text-sm">
+              <p className="font-semibold">Legale</p>
+              <Link href="/privacy" className="rounded text-muted-foreground hover:text-foreground">
+                Privacy
+              </Link>
+              <Link href="/cookie" className="rounded text-muted-foreground hover:text-foreground">
+                Cookie
+              </Link>
+            </nav>
           </div>
           <p className="border-t border-border pt-6 text-sm text-muted-foreground">
             © {new Date().getFullYear()} Portale Condominio
