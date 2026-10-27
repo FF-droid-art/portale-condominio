@@ -32,13 +32,24 @@ export default function ReimpostaPasswordPage() {
   useEffect(() => {
     const supabase = createClient();
 
+    // Il link di recupero porta nel frammento dell'URL "type=recovery": è
+    // la prova che questo caricamento di pagina sta davvero elaborando un
+    // token appena arrivato dall'email. Senza questo controllo, una
+    // sessione qualsiasi già presente nel browser (es. un altro account
+    // rimasto loggato su questo dispositivo) verrebbe scambiata per la
+    // sessione di recupero, mostrando il modulo per un account che non è
+    // quello per cui è stato chiesto il reset.
+    const eRecuperoDaUrl = window.location.hash.includes("type=recovery");
+
     const { data: listener } = supabase.auth.onAuthStateChange((evento) => {
       if (evento === "PASSWORD_RECOVERY") setPronto(true);
     });
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setPronto(true);
-    });
+    if (eRecuperoDaUrl) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session) setPronto(true);
+      });
+    }
 
     const timeout = setTimeout(() => {
       if (!prontoRef.current) setScaduto(true);
