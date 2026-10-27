@@ -23,7 +23,6 @@ export async function login(
   });
 
   if (error) {
-    console.error("DEBUG login error:", error);
     return { errore: "Email o password non corrette." };
   }
 

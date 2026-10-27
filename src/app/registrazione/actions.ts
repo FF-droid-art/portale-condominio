@@ -15,6 +15,13 @@ export async function registrati(
   const password = String(formData.get("password") ?? "");
   const ruoloRichiesto = String(formData.get("ruolo") ?? "");
   const ruolo: Ruolo = ruoloRichiesto === "amministratore" ? "amministratore" : "condomino";
+  // Il widget Cloudflare Turnstile (src/components/turnstile-widget.tsx)
+  // inietta questo campo nascosto dentro al form quando la verifica va a
+  // buon fine. Se la chiave pubblica non è configurata (es. in sviluppo
+  // locale) il widget non compare e il campo resta vuoto: lo passiamo a
+  // Supabase comunque, che lo ignora se la protezione captcha non è attiva
+  // sul progetto, e lo richiede invece quando lo è.
+  const captchaToken = String(formData.get("cf-turnstile-response") ?? "");
 
   if (!nome || !cognome || !email || !password) {
     return { errore: "Compila tutti i campi." };
@@ -35,10 +42,14 @@ export async function registrati(
     password,
     options: {
       data: { nome, cognome, ruolo },
+      captchaToken: captchaToken || undefined,
     },
   });
 
   if (error) {
+    if (error.code === "captcha_failed") {
+      return { errore: "Verifica anti-bot non riuscita. Ricarica la pagina e riprova." };
+    }
     return { errore: "Registrazione non riuscita: " + error.message };
   }
 

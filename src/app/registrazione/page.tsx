@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { MailCheck } from "lucide-react";
 import { registrati } from "./actions";
 import { AuthShell, AuthLink } from "@/components/auth-shell";
@@ -8,9 +8,15 @@ import { Field, FormGrid, Input, Select } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 
 export default function RegistrazionePage() {
   const [stato, action, pending] = useActionState(registrati, undefined);
+  // Se la chiave pubblica del captcha non è configurata, il widget non
+  // compare: in quel caso il form resta utilizzabile senza bloccarsi in
+  // attesa di una verifica che non arriverà mai (es. in sviluppo locale).
+  const captchaConfigurato = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
+  const [captchaPronto, setCaptchaPronto] = useState(!captchaConfigurato);
 
   if (stato?.successo) {
     return (
@@ -84,9 +90,18 @@ export default function RegistrazionePage() {
           </Select>
         </Field>
 
+        <TurnstileWidget onChange={setCaptchaPronto} />
+
         <FormError>{stato?.errore}</FormError>
 
-        <Button type="submit" pending={pending} full size="lg" className="mt-1">
+        <Button
+          type="submit"
+          pending={pending}
+          disabled={!captchaPronto}
+          full
+          size="lg"
+          className="mt-1"
+        >
           {pending ? "Creazione account…" : "Crea account"}
         </Button>
       </form>
