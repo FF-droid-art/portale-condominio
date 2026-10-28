@@ -10,4 +10,8 @@ export type SessioneImpersonazione = {
   refresh_token: string;
   admin_nome: string;
   target_nome: string;
+  // Access token della sessione impersonata (il condòmino), salvato solo per
+  // poterla revocare lato server a fine impersonazione: senza questo
+  // restava valida anche dopo "Torna amministratore" (vedi terminaImpersonazione).
+  target_access_token: string;
 };

@@ -51,9 +51,15 @@ export async function visualizzaComeCondomino(formData: FormData): Promise<void>
   } = await supabase.auth.getSession();
   if (!sessioneAdmin) redirect("/login");
 
-  // Selezionabile solo tra gli utenti che l'amministratore può già
-  // vedere (policy "utenti_select_self_or_admin"): esclude quindi
-  // condòmini di condomini altrui.
+  // ATTENZIONE: "utenti_select_self_or_admin" NON basta a stabilire che si
+  // possa impersonare questo utente. Quella policy rende visibile (solo per
+  // poterlo assegnare a un'unità) anche qualunque condòmino non ancora
+  // collegato a nessuna unità, a QUALSIASI amministratore — non solo al
+  // proprio. Usarla da sola qui permetterebbe a un amministratore di
+  // impersonare un condòmino di un altro gestore, purché non ancora
+  // assegnato (vedi THREAT-01 in docs/audit/04-threat-model.md). Il
+  // controllo vero è admin_gestisce_utente(), che richiede un collegamento
+  // via unita_proprietari a un condominio di CUI SONO io l'amministratore.
   const { data: target } = await supabase
     .from("utenti")
     .select("id, nome, cognome, email, ruolo")
@@ -62,6 +68,11 @@ export async function visualizzaComeCondomino(formData: FormData): Promise<void>
     .single();
 
   if (!target) redirect("/admin/utenti");
+
+  const { data: autorizzato } = await supabase.rpc("admin_gestisce_utente", {
+    utente: target.id,
+  });
+  if (!autorizzato) redirect("/admin/utenti");
 
   const service = createServiceClient();
   const { data: link, error: erroreLink } = await service.auth.admin.generateLink({
@@ -77,11 +88,19 @@ export async function visualizzaComeCondomino(formData: FormData): Promise<void>
   });
   if (erroreVerifica) redirect("/admin/utenti");
 
+  // Serve per poterla revocare lato server a fine impersonazione: non è
+  // la sessione con cui si naviga ora (quella la gestiscono i cookie
+  // sb-*-auth-token scritti da verifyOtp), è solo il suo access token.
+  const {
+    data: { session: sessioneTarget },
+  } = await supabase.auth.getSession();
+
   const daSalvare: SessioneImpersonazione = {
     access_token: sessioneAdmin.access_token,
     refresh_token: sessioneAdmin.refresh_token,
     admin_nome: `${admin.nome} ${admin.cognome}`,
     target_nome: `${target.nome} ${target.cognome}`,
+    target_access_token: sessioneTarget?.access_token ?? "",
   };
 
   const cookieStore = await cookies();
@@ -109,6 +128,18 @@ export async function terminaImpersonazione(): Promise<void> {
     access_token: salvato.access_token,
     refresh_token: salvato.refresh_token,
   });
+
+  // Senza questa revoca esplicita, il token del condòmino impersonato
+  // restava valido (fino alla sua scadenza naturale) anche dopo il
+  // ritorno all'amministratore — vedi THREAT-01 in
+  // docs/audit/04-threat-model.md. Richiede la service role perché
+  // revocare la sessione di un ALTRO utente non è un'operazione che la
+  // chiave anonima può fare nemmeno con RLS. Se il token è già scaduto o
+  // la chiamata fallisce non blocchiamo comunque il ritorno in dashboard.
+  if (salvato.target_access_token) {
+    const service = createServiceClient();
+    await service.auth.admin.signOut(salvato.target_access_token, "global").catch(() => {});
+  }
 
   redirect("/admin/utenti");
 }
