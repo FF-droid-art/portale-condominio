@@ -112,7 +112,7 @@ Il Fornitore ha messo in atto, e si impegna a mantenere, le misure di seguito de
 
 ### 3.8 Infrastruttura
 - Comunicazioni cifrate in transito tramite **TLS/HTTPS** su tutte le connessioni, garantite dal fornitore di hosting.
-- Cifratura dei dati a riposo e procedure di backup gestite dal fornitore di database secondo le proprie politiche: **`[DA VERIFICARE E DOCUMENTARE — vedi domande aperte]`**.
+- Cifratura dei dati a riposo gestita dal fornitore di database secondo le proprie politiche standard. **Backup: nessuno sul piano attualmente in uso.** Il piano Free di Supabase non include alcun backup del database (né giornaliero né Point in Time Recovery): la verifica è stata fatta sul pannello reale il 2026-10-29, dettaglio in `docs/audit/CONT-01-backup-verificato.md`. Fino a un eventuale passaggio al piano Pro, un evento distruttivo lato database non è recuperabile.
 - Credenziali e chiavi dei servizi esterni conservate come variabili d'ambiente cifrate presso il fornitore di hosting, mai nel codice sorgente.
 
 ### 3.9 Limiti noti — dichiarazione di trasparenza

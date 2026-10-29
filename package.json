@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:isolamento": "vitest run -c vitest.integration.config.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.1",

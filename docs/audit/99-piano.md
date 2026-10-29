@@ -178,6 +178,33 @@ altra pianificazione.
 Priorità alta non perché urgente in sé, ma perché **THREAT-01 ha appena
 dimostrato cosa succede senza**. Va aperto subito dopo il Blocco A.
 
+> **Stato: completato il 2026-10-29.** Tutti e tre i punti di questo
+> blocco sono stati chiusi nella stessa sessione in cui è stato scritto
+> questo piano:
+> - **9 (THREAT-03+COD-10)**: fatto — `tests/isolamento-tenant.test.ts`,
+>   lanciato con `npm run test:isolamento` contro un progetto Supabase
+>   dedicato (non quello di produzione/demo). 6 test, tutti verdi,
+>   incluso il caso specifico richiesto qui ("un amministratore senza
+>   condomìni non deve poter impersonare un condòmino non suo" — la
+>   regressione diretta di THREAT-01, verificata chiamando
+>   `admin_gestisce_utente()` sia nel caso negativo che in quello
+>   positivo di controllo). Dettagli e come estenderla in `CLAUDE.md`,
+>   sezione "Comandi di sviluppo, test e deploy".
+> - **10 (COD-09)**: fatto solo per la parte di logging strutturato
+>   minimo (i 4 punti dove un fallimento spariva nel nulla ora loggano
+>   con `console.error` e contesto). **Non fatto**: un servizio di error
+>   tracking esterno (Sentry o simile) — resta un passo successivo,
+>   volutamente non incluso qui perché introduce una dipendenza esterna
+>   da valutare a parte.
+> - **11 (CONT-01)**: fatto — verificato sul pannello reale di Supabase
+>   il 2026-10-29. Esito: **nessun backup di alcun tipo sul piano Free**
+>   attualmente in uso (non solo "da verificare": è confermato).
+>   Dettaglio completo in `docs/audit/CONT-01-backup-verificato.md`,
+>   placeholder nella bozza di DPA sostituito con il dato reale. La
+>   parte di *decisione* (passare al piano Pro, o affiancare un export
+>   manuale nel frattempo) resta aperta: è una spesa ricorrente, non una
+>   scelta che questo piano prende da solo.
+
 9. **THREAT-03 + COD-10** — introdurre test automatizzati che dimostrino
    l'isolamento tra tenant, almeno sui flussi più sensibili (voti,
    ripartizioni, movimenti bancari, e **specificamente un test per il

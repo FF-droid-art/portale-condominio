@@ -143,24 +143,32 @@ succede dopo nell'interfaccia.
 ## Comandi di sviluppo, test e deploy
 
 ```bash
-npm run dev      # next dev
-npm run build    # next build
-npm run start    # next start
-npm run lint      # eslint (preset eslint-config-next)
-npm run test      # vitest run — SOLO src/**/*.test.ts, solo logica pura
+npm run dev            # next dev
+npm run build          # next build
+npm run start          # next start
+npm run lint           # eslint (preset eslint-config-next)
+npm run test           # vitest run — SOLO src/**/*.test.ts, solo logica pura
+npm run test:isolamento  # vitest run contro un progetto Supabase VERO dedicato ai test
 ```
 
 - **Nessuna pipeline CI**: niente in `.github/workflows`. Lint e test non
   sono applicati automaticamente su push/PR — eseguili tu stesso prima di
   aprire una PR.
-- **Nessun test di isolamento tenant esiste oggi** (né e2e, né di
-  integrazione contro un Postgres vero): i test coprono solo funzioni pure
-  di `src/lib/**`. Se aggiungi o modifichi una policy RLS o un flusso che
-  agisce per conto di un altro utente (impersonazione, magic link,
-  service-role), **non fidarti della sola lettura della policy**: se puoi,
-  verificala con una query reale contro un progetto Supabase locale/di
-  test prima di considerarla chiusa. Non è ancora automatizzato: finché
-  non lo è, è responsabilità di chi scrive il codice.
+- **Test di isolamento tenant** (`tests/isolamento-tenant.test.ts`,
+  comando `npm run test:isolamento`): a differenza di `npm run test`,
+  questi parlano davvero con un progetto Supabase — mai quello di
+  produzione/demo, uno dedicato, con `supabase/schema.sql` già applicato
+  e le credenziali in `.env.test.local` (vedi `.env.test.local.example`).
+  Creano due "tenant" paralleli (due amministratori, due condòmini, due
+  condomìni) ed eseguono query autenticate reali per verificare che le
+  policy RLS impediscano l'accesso incrociato — **includono la
+  regressione diretta di THREAT-01** (un amministratore non può ottenere
+  `admin_gestisce_utente() = true` su un condòmino non suo). Se aggiungi
+  o modifichi una tabella/policy che tocca l'isolamento tra condomìni o
+  tra amministratori, **aggiungi qui un caso** prima di considerare la
+  modifica conclusa — non limitarti a leggere la policy a mente. Se
+  `.env.test.local` non è configurato, la suite si salta da sola (non
+  rompe `npm run test` né CI futura).
 - **Schema del database**: `supabase/schema.sql` non è un file che si
   modifica in place — è un **log cumulativo di migrazioni**, applicato a
   mano nel SQL Editor di Supabase (nessuna Supabase CLI, nessuna cartella
