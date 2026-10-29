@@ -1,7 +1,7 @@
-import { Download, FileText, FolderOpen } from "lucide-react";
+import { Download, ExternalLink, FileText, FolderOpen, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
-import type { DocumentoCondominio } from "@/lib/types";
+import type { CondizioneSicurezza, DocumentoCondominio } from "@/lib/types";
 import { PageBody, PageHeader } from "@/components/ui/page-header";
 import { Section } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,12 +35,25 @@ export default async function DocumentiCondominoPage() {
 
   // Nessun filtro esplicito sul condominio: la policy "documenti_condominio_select"
   // restituisce già i soli documenti degli stabili a cui l'utente appartiene.
-  const { data } = await supabase
-    .from("documenti_condominio")
-    .select("*, condominio:condominio_id(nome)")
-    .order("created_at", { ascending: false });
+  // Idem per le condizioni di sicurezza delle parti comuni: la policy
+  // "condizioni_sicurezza_select" restituisce già solo quelle del proprio
+  // stabile. È un dato che l'art. 1130, n. 6, c.c. fa tenere
+  // all'amministratore, ma riguarda l'edificio in cui si abita: averlo
+  // scritto nel registro e non mostrarlo al condòmino non avrebbe senso.
+  const [{ data }, { data: sicurezza }] = await Promise.all([
+    supabase
+      .from("documenti_condominio")
+      .select("*, condominio:condominio_id(nome)")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("condizioni_sicurezza_parti_comuni")
+      .select("*")
+      .order("data_ultima_verifica", { ascending: false, nullsFirst: false })
+      .order("parte"),
+  ]);
 
   const documenti = (data ?? []) as unknown as RigaDocumento[];
+  const condizioni = (sicurezza ?? []) as CondizioneSicurezza[];
 
   const percorsi = documenti.map((d) => d.percorso);
   const urlPerPercorso = new Map<string, string>();
@@ -150,6 +163,65 @@ export default async function DocumentiCondominoPage() {
           title="Nessun documento disponibile"
           description="Quando l'amministratore caricherà il regolamento, le planimetrie o le polizze del tuo condominio li troverai qui."
         />
+      )}
+
+      {condizioni.length > 0 && (
+        <Section
+          titolo="Condizioni di sicurezza delle parti comuni"
+          descrizione="Lo stato degli impianti e delle parti comuni alla data dell'ultima verifica, come registrato dall'amministratore (art. 1130, n. 6, c.c.)."
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Parte comune o impianto</TableHead>
+                <TableHead>Stato rilevato</TableHead>
+                <TableHead>Ultima verifica</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {condizioni.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell className="font-medium">
+                    <RowIcon icon={ShieldCheck}>{c.parte}</RowIcon>
+                  </TableCell>
+                  <TableCell etichetta="Stato rilevato">
+                    {c.descrizione ? (
+                      <span className="flex flex-col gap-1">
+                        <span className="text-sm">{c.descrizione}</span>
+                        {c.documento_url && (
+                          <a
+                            href={c.documento_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-accent-ink hover:underline"
+                          >
+                            Certificato
+                            <ExternalLink className="size-3" aria-hidden="true" />
+                          </a>
+                        )}
+                      </span>
+                    ) : c.documento_url ? (
+                      <a
+                        href={c.documento_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-accent-ink hover:underline"
+                      >
+                        Certificato
+                        <ExternalLink className="size-3" aria-hidden="true" />
+                      </a>
+                    ) : (
+                      <Vuoto />
+                    )}
+                  </TableCell>
+                  <TableCell etichetta="Ultima verifica">
+                    {c.data_ultima_verifica ? formatData(c.data_ultima_verifica) : <Vuoto />}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Section>
       )}
     </PageBody>
   );

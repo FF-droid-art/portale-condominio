@@ -123,7 +123,7 @@ Protezione verificata: `src/app/area-riservata/layout.tsx` chiama `richiedeUtent
 |---|---|---|
 | `condomini` | Anagrafica stabile | `amministratore_id → utenti.id` (aggiunta con `alter table` più avanti nel file, non nella `create table` iniziale: multi-tenancy per amministratore) |
 | `utenti` | Estende `auth.users` | `id → auth.users.id` (cascade); `ruolo` check `amministratore`/`condomino`; riga creata dal trigger `handle_new_user` |
-| `unita` | Unità immobiliari | `condominio_id → condomini`; `millesimi_proprieta` |
+| `unita` | Unità immobiliari | `condominio_id → condomini`; `millesimi_proprieta`; dati catastali `catasto_foglio`/`catasto_particella`/`catasto_subalterno`/`catasto_categoria` (nullable, art. 1130 n. 6 c.c.) |
 | `unita_proprietari` | Join unità↔persona (comproprietà) | `unita_id`, `utente_id` (nullable dopo l'introduzione di `anagrafiche`), `anagrafica_id`, `quota_possesso` |
 | `assemblee` | Assemblee condominiali | `condominio_id`; `tipo` (ordinaria/straordinaria); `stato`; `verbale_url` |
 | `punti_odg` | Punti all'ordine del giorno | `assemblea_id`; `tipo_maggioranza`; `esito` |
@@ -134,7 +134,7 @@ Protezione verificata: `src/app/area-riservata/layout.tsx` chiama `richiedeUtent
 | `deleghe` | Delega di voto | `unita_delegante_id` ≠ `unita_delegataria_id` (check); limite di legge (art. 67 disp. att. c.c.) applicato in `src/lib/deleghe.ts`, non nel DB |
 | `import_batches` | Lotti di importazione | `condominio_id`; referenziata da `unita.import_batch_id`, `spese.import_batch_id`, `anagrafiche.import_batch_id` |
 | `tabelle_millesimali` / `valori_millesimali` | Tabelle millesimali multiple per condominio | `condominio_id` → `tabelle_millesimali` → `valori_millesimali(unita_id, valore)` |
-| `anagrafiche` | Persone/società non necessariamente utenti registrati | `condominio_id`; `utente_id` opzionale (collegamento "reclama la tua anagrafica" non ancora implementato, vedi `IDEE-FUTURE.md`) |
+| `anagrafiche` | Persone/società non necessariamente utenti registrati | `condominio_id`; `utente_id` opzionale (collegamento "reclama la tua anagrafica" non ancora implementato, vedi `IDEE-FUTURE.md`); `codice_fiscale`, `residenza_domicilio` (nullable, art. 1130 n. 6 c.c.) |
 | `firme_verbale` | Conferma OTP del verbale da presidente/segretario | `assemblea_id`; `token` univoco; `otp_hash` (mai in chiaro), scadenza, tentativi |
 | `sondaggi` / `sondaggio_opzioni` / `sondaggio_risposte` | Consultazioni rapide non vincolanti | `condominio_id`; risposta unica per unità finché aperto |
 | `fornitori` | Anagrafica fornitori/manutentori | `condominio_id`; `categoria` enum |
@@ -145,6 +145,7 @@ Protezione verificata: `src/app/area-riservata/layout.tsx` chiama `richiedeUtent
 | `preferenze_notifiche` | Opt-out notifiche email per tipo evento | `utente_id`, `tipo_evento` (testo libero, non enum) |
 | `solleciti` | Storico lettere di morosità inviate | `condominio_id`, `unita_id`; `livello` 1/2/3 |
 | `movimenti_bancari` | Righe di estratto conto importate | `condominio_id`; `ripartizione_id?`; `import_hash` univoco per condominio (idempotenza import) |
+| `condizioni_sicurezza_parti_comuni` | Registro delle condizioni di sicurezza delle parti comuni (art. 1130 n. 6 c.c.) | `condominio_id`; `parte`, `data_ultima_verifica?`, `documento_url?` (link, nessun upload proprio) |
 
 Funzioni/trigger rilevanti verificati: `handle_new_user` (provisioning riga `utenti` alla registrazione, forza ruolo a `condomino` salvo richiesta esplicita `amministratore`), `blocca_cambio_ruolo_non_autorizzato` (trigger `before update` su `utenti` che impedisce auto-promozione), `ruolo_corrente()`, `possiede_unita()`, `appartiene_condominio()` (helper `security definer` usati nelle policy), `importa_spese_storiche` (funzione di import bulk, **non** `security definer` — gira con i privilegi del chiamante, quindi dipende dalle policy RLS di `spese`/`ripartizioni`).
 
@@ -183,6 +184,7 @@ Tutte le tabelle applicative hanno RLS abilitata (verificato: ogni `create table
 | `preferenze_notifiche` | `preferenze_notifiche_select`, `preferenze_notifiche_write` |
 | `solleciti` | `solleciti_select`, `solleciti_write_admin` |
 | `movimenti_bancari` | `movimenti_bancari_admin` (unica policy) |
+| `condizioni_sicurezza_parti_comuni` | `condizioni_sicurezza_select` (admin del condominio + condòmini dello stabile), `condizioni_sicurezza_write_admin` |
 | `storage.objects` (bucket documenti) | `documenti_select`, `documenti_insert_admin`, `documenti_delete_admin` (definite due volte nel file, in due migrazioni successive) |
 
 Nota metodologica per la Fase 4: diverse policy (es. `voti_insert_condomino`, `utenti_select_self_or_admin`) sono **ridefinite più volte** nel file via `drop policy [if exists]` + `create policy`. La mappa sopra elenca i nomi distinti; la verifica di *quale condizione sia effettivamente in vigore* richiede di seguire l'ordine delle righe nel file (l'ultima definizione vince) — lavoro da fare in Fase 4, non anticipato qui.
@@ -248,7 +250,8 @@ Per ciascuna feature: pagine/route, server actions, componenti, logica di librer
 ### 7.2 Multi-tenancy condomìni / unità / anagrafiche
 - Pagine admin: `src/app/admin/condomini/**`, `src/app/admin/unita/[id]/**`
 - Actions: `src/app/admin/condomini/actions.ts`, `src/app/admin/unita/[id]/actions.ts`
-- DB: `condomini.amministratore_id`, helper RLS `appartiene_condominio`, `possiede_unita`; tabelle `anagrafiche`, `tabelle_millesimali`, `valori_millesimali`
+- DB: `condomini.amministratore_id`, helper RLS `appartiene_condominio`, `possiede_unita`; tabelle `anagrafiche`, `tabelle_millesimali`, `valori_millesimali`, `condizioni_sicurezza_parti_comuni`
+- Lib: `src/lib/anagrafe.ts` (dati minimi del registro di anagrafe ex art. 1130 n. 6 c.c.: normalizzazione/validazione del codice fiscale, dati catastali)
 
 ### 7.3 Spese e ripartizioni
 - Pagine: `src/app/admin/spese/**` (elenco ordinabile: `elenco-spese.tsx`)

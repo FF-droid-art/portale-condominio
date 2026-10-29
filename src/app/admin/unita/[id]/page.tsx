@@ -28,9 +28,11 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { haQuota } from "@/lib/ruoli";
+import { datiAnagrafeMancanti } from "@/lib/anagrafe";
 import { ProprietarioForm } from "./proprietario-form";
 import { RimuoviProprietarioButton } from "./rimuovi-proprietario-button";
-import { ModificaContattiButton } from "./modifica-contatti-button";
+import { ModificaAnagraficaButton } from "./modifica-anagrafica-button";
+import { ModificaCatastoButton } from "./modifica-catasto-button";
 import { ModificaMillesimiButton } from "./modifica-millesimi-button";
 
 export default async function UnitaDettaglioPage({
@@ -53,7 +55,7 @@ export default async function UnitaDettaglioPage({
     supabase
       .from("unita_proprietari")
       .select(
-        "*, utente:utente_id(nome, cognome, email), anagrafica:anagrafica_id(nominativo, email, telefono)"
+        "*, utente:utente_id(nome, cognome, email), anagrafica:anagrafica_id(nominativo, email, telefono, codice_fiscale, residenza_domicilio)"
       )
       .eq("unita_id", id)
       .order("created_at"),
@@ -154,6 +156,26 @@ export default async function UnitaDettaglioPage({
               Soggetti attivi
             </dt>
             <dd className="cifre text-sm font-medium">{attivi.length}</dd>
+          </div>
+          {/* I dati catastali sono un dato di legge del registro di anagrafe
+              (art. 1130, n. 6, c.c.): stanno qui con gli altri dati
+              dell'unità, non in una pagina a parte, e si compilano appena
+              arriva la visura. */}
+          <div className="col-span-2 flex flex-col gap-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Dati catastali
+            </dt>
+            <dd className="text-sm">
+              <ModificaCatastoButton
+                unitaId={unita.id}
+                condominioId={unita.condominio_id}
+                identificativo={unita.identificativo}
+                foglio={unita.catasto_foglio ?? null}
+                particella={unita.catasto_particella ?? null}
+                subalterno={unita.catasto_subalterno ?? null}
+                categoria={unita.catasto_categoria ?? null}
+              />
+            </dd>
           </div>
         </dl>
       </Card>
@@ -262,6 +284,16 @@ export default async function UnitaDettaglioPage({
                   p.anagrafica?.email ?? p.utente?.email ?? null,
                   p.anagrafica?.telefono ?? null,
                 ].filter(Boolean);
+                // Codice fiscale e residenza sono dati del registro di
+                // anagrafe: si mostrano in riga quando ci sono e si segnala
+                // con discrezione quando mancano, senza bloccare nulla.
+                const anagrafe = [
+                  p.anagrafica?.codice_fiscale ? `C.F. ${p.anagrafica.codice_fiscale}` : null,
+                  p.anagrafica?.residenza_domicilio ?? null,
+                ].filter(Boolean);
+                const mancanti = p.anagrafica_id
+                  ? datiAnagrafeMancanti(p.anagrafica ?? {})
+                  : [];
                 return (
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">
@@ -271,6 +303,16 @@ export default async function UnitaDettaglioPage({
                           {contatti.length > 0 && (
                             <span className="text-xs font-normal text-muted-foreground">
                               {contatti.join(" · ")}
+                            </span>
+                          )}
+                          {anagrafe.length > 0 && (
+                            <span className="text-xs font-normal text-muted-foreground">
+                              {anagrafe.join(" · ")}
+                            </span>
+                          )}
+                          {mancanti.length > 0 && (
+                            <span className="text-xs font-normal text-warning">
+                              Manca {mancanti.join(" e ")} (registro di anagrafe)
                             </span>
                           )}
                         </span>
@@ -296,12 +338,14 @@ export default async function UnitaDettaglioPage({
                     <TableCell className="md:text-right">
                       <span className="flex items-center justify-end gap-1">
                         {p.anagrafica_id && (
-                          <ModificaContattiButton
+                          <ModificaAnagraficaButton
                             anagraficaId={p.anagrafica_id}
                             unitaId={unita.id}
                             nominativo={p.anagrafica?.nominativo ?? ""}
                             email={p.anagrafica?.email ?? null}
                             telefono={p.anagrafica?.telefono ?? null}
+                            codiceFiscale={p.anagrafica?.codice_fiscale ?? null}
+                            residenzaDomicilio={p.anagrafica?.residenza_domicilio ?? null}
                           />
                         )}
                         <RimuoviProprietarioButton

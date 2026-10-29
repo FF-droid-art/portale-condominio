@@ -19,7 +19,49 @@ export type Unita = {
   identificativo: string;
   piano: string | null;
   millesimi_proprieta: number;
+  /** Dati catastali richiesti dall'art. 1130, n. 6, c.c. Raccolti a mano,
+   *  quindi nullable: un'unità esiste anche prima di avere la visura. */
+  catasto_foglio: string | null;
+  catasto_particella: string | null;
+  catasto_subalterno: string | null;
+  catasto_categoria: string | null;
   import_batch_id: string | null;
+  created_at: string;
+};
+
+/**
+ * Una persona (o società) del condominio, slegata dall'account di login:
+ * `utente_id` è valorizzato solo quando si registra al portale.
+ * `codice_fiscale` e `residenza_domicilio` sono i dati che l'art. 1130,
+ * n. 6, c.c. richiede per il registro di anagrafe.
+ */
+export type Anagrafica = {
+  id: string;
+  condominio_id: string;
+  nominativo: string;
+  email: string | null;
+  telefono: string | null;
+  tipo: "persona" | "societa";
+  codice_fiscale: string | null;
+  residenza_domicilio: string | null;
+  utente_id: string | null;
+  import_batch_id: string | null;
+  created_at: string;
+};
+
+/**
+ * Una voce del registro delle condizioni di sicurezza delle parti comuni
+ * (art. 1130, n. 6, c.c.): lo stato di fatto di una parte comune o di un
+ * impianto alla data dell'ultima verifica. Le scadenze future restano in
+ * `ManutenzioneProgrammata`.
+ */
+export type CondizioneSicurezza = {
+  id: string;
+  condominio_id: string;
+  parte: string;
+  descrizione: string | null;
+  data_ultima_verifica: string | null;
+  documento_url: string | null;
   created_at: string;
 };
 

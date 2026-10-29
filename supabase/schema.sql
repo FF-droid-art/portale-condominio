@@ -3103,3 +3103,113 @@ drop trigger if exists trg_movimenti_abbinamento on movimenti_bancari;
 create trigger trg_movimenti_abbinamento
   before insert or update on movimenti_bancari
   for each row execute function public.verifica_abbinamento_movimento();
+
+
+-- ============================================================
+-- Migrazione: registro di anagrafe condominiale conforme
+--             all'art. 1130, n. 6, c.c. (FEAT-01)
+-- Da applicare manualmente su Supabase (SQL Editor). Idempotente.
+--
+-- L'art. 1130, n. 6, c.c. impone all'amministratore di curare la tenuta
+-- del registro di anagrafe condominiale contenente, oltre alle
+-- generalità già raccolte (nominativo, contatti, titolo sull'unità):
+--   a) il CODICE FISCALE e la RESIDENZA O IL DOMICILIO di ciascun
+--      proprietario e titolare di diritti reali o di godimento;
+--   b) i DATI CATASTALI di ciascuna unità immobiliare;
+--   c) ogni dato relativo alle CONDIZIONI DI SICUREZZA delle parti
+--      comuni.
+-- Finora lo schema copriva solo le generalità: un amministratore che
+-- usasse questo portale come unico registro non ne avrebbe uno
+-- conforme al minimo di legge (docs/audit/03-feature-conformita.md,
+-- FEAT-01).
+--
+-- Tutte le colonne nuove sono NULLABLE di proposito. Sono dati che si
+-- raccolgono progressivamente — il codice fiscale quando il condòmino
+-- lo comunica, i dati catastali quando arriva il rogito o la visura —
+-- e i condomìni già nel database non li hanno: renderli obbligatori
+-- impedirebbe di creare un'unità o una persona finché non si ha tutto.
+-- Per le colonne aggiunte NON serve nessuna policy nuova: anagrafiche
+-- e unita sono già protette da RLS riga per riga, e una colonna in più
+-- eredita la visibilità della riga che la contiene.
+--
+-- Perché le condizioni di sicurezza diventano una TABELLA e non un
+-- campo testuale su "condomini": la norma chiede "ogni dato relativo
+-- alle condizioni di sicurezza", e nella prassi quei dati sono un
+-- elenco di voci distinte (facciata, impianto elettrico, ascensore,
+-- canna fumaria, impianto antincendio…), ognuna con la propria data di
+-- ultima verifica e il proprio certificato. Un unico campo di testo non
+-- potrebbe tenere una data per voce — ed è la data il dato che dice
+-- all'amministratore che cosa è scaduto. Resta però un registro dello
+-- stato di fatto, non un piano di manutenzione: le scadenze future
+-- continuano a stare in manutenzioni_programmate.
+-- ============================================================
+
+-- 1) ANAGRAFICHE: codice fiscale e residenza/domicilio ----------
+-- residenza_domicilio è un unico campo di testo libero (via, comune,
+-- provincia, CAP) e non quattro colonne normalizzate: il dato serve a
+-- recapitare le comunicazioni e a identificare la persona negli atti,
+-- non a essere aggregato o filtrato per comune.
+alter table anagrafiche
+  add column if not exists codice_fiscale text,
+  add column if not exists residenza_domicilio text;
+
+-- 2) UNITA: dati catastali --------------------------------------
+-- Quattro colonne distinte e non un unico "riferimenti catastali":
+-- foglio, particella e subalterno si riportano separati nelle visure e
+-- negli atti, e tenerli separati permette di ritrovare un'unità per
+-- particella senza interpretare una stringa. Tutti di tipo text e non
+-- numerici: i subalterni hanno zeri iniziali e la categoria è un codice
+-- ("A/2", "C/6").
+alter table unita
+  add column if not exists catasto_foglio text,
+  add column if not exists catasto_particella text,
+  add column if not exists catasto_subalterno text,
+  add column if not exists catasto_categoria text;
+
+-- 3) CONDIZIONI DI SICUREZZA DELLE PARTI COMUNI -----------------
+create table if not exists condizioni_sicurezza_parti_comuni (
+  id uuid primary key default gen_random_uuid(),
+  condominio_id uuid not null references condomini(id) on delete cascade,
+  -- a quale parte comune o impianto si riferisce la voce: testo libero e
+  -- non un enum, perché l'elenco delle parti comuni cambia da stabile a
+  -- stabile e aggiungerne una non deve essere una migrazione.
+  parte text not null,
+  -- stato rilevato e annotazioni (prescrizioni, criticità ancora aperte)
+  descrizione text,
+  data_ultima_verifica date,
+  -- riferimento al certificato o al verbale di verifica: un link, anche
+  -- al documento già caricato nell'archivio del condominio. Non un
+  -- upload nuovo: l'unico punto di caricamento resta
+  -- documenti_condominio, così non si aggiunge un secondo percorso di
+  -- upload da mettere in sicurezza.
+  documento_url text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_condizioni_sicurezza_condominio
+  on condizioni_sicurezza_parti_comuni(condominio_id, data_ultima_verifica desc);
+
+-- 4) RLS sulla tabella nuova ------------------------------------
+alter table condizioni_sicurezza_parti_comuni enable row level security;
+
+-- Il condòmino LEGGE: in che condizioni di sicurezza sono le parti
+-- comuni dello stabile in cui abita è informazione sua, e tenerla
+-- riservata all'amministratore contraddirebbe lo scopo del registro.
+-- Scrive solo l'amministratore che possiede quel condominio, come per
+-- l'archivio documenti.
+drop policy if exists "condizioni_sicurezza_select" on condizioni_sicurezza_parti_comuni;
+create policy "condizioni_sicurezza_select" on condizioni_sicurezza_parti_comuni
+  for select using (
+    admin_possiede_condominio(condominio_id) or appartiene_condominio(condominio_id)
+  );
+
+drop policy if exists "condizioni_sicurezza_write_admin" on condizioni_sicurezza_parti_comuni;
+create policy "condizioni_sicurezza_write_admin" on condizioni_sicurezza_parti_comuni
+  for all using (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_possiede_condominio(condominio_id));
+
+-- Nota sull'import massivo: le funzioni importa_* NON sono state
+-- estese in questa migrazione. I campi nuovi si inseriscono a mano
+-- dall'interfaccia (scheda unità e scheda condominio); estendere
+-- importa_condomini_unita_persone richiede di riscriverne l'intero
+-- corpo e va fatto con una migrazione dedicata.

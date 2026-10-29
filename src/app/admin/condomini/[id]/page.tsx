@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarClock, Home, Landmark, Wallet } from "lucide-react";
+import { CalendarClock, ExternalLink, Home, Landmark, ShieldCheck, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { PageBody, PageHeader } from "@/components/ui/page-header";
 import {
@@ -27,6 +27,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { formatData, formatDataOra, formatMillesimi, formatValuta } from "@/lib/format";
 import { haQuota } from "@/lib/ruoli";
+import type { CondizioneSicurezza } from "@/lib/types";
+import { CondizioneSicurezzaForm } from "./condizione-sicurezza-form";
+import { EliminaCondizioneButton } from "./elimina-condizione-button";
 import { ContoCorrenteForm } from "../conto-corrente-form";
 import { ModificaCondominioButton } from "./modifica-condominio-button";
 import { TrasferisciCondominioButton } from "./trasferisci-condominio-button";
@@ -81,6 +84,7 @@ export default async function CondominioDettaglioPage({
     { data: spese },
     { data: tabelleMillesimi },
     { data: anagraficheEmail },
+    { data: condizioniSicurezza },
   ] = await Promise.all([
     supabase
       .from("unita")
@@ -101,7 +105,15 @@ export default async function CondominioDettaglioPage({
       .order("data_spesa", { ascending: false }),
     supabase.from("tabelle_millesimali").select("id, nome").eq("condominio_id", id),
     supabase.from("anagrafiche").select("email").eq("condominio_id", id),
+    supabase
+      .from("condizioni_sicurezza_parti_comuni")
+      .select("*")
+      .eq("condominio_id", id)
+      .order("data_ultima_verifica", { ascending: false, nullsFirst: false })
+      .order("parte"),
   ]);
+
+  const condizioni = (condizioniSicurezza ?? []) as CondizioneSicurezza[];
 
   const destinatariAvvisi = new Set(
     (anagraficheEmail ?? []).map((a) => a.email as string | null).filter((e): e is string => !!e)
@@ -309,6 +321,92 @@ export default async function CondominioDettaglioPage({
                     </Button>
                   </>
                 }
+              />
+            )}
+          </Section>
+
+          {/* Condizioni di sicurezza delle parti comuni: l'art. 1130, n. 6,
+              c.c. le vuole nel registro di anagrafe insieme alle generalità
+              e ai dati catastali, quindi stanno qui accanto a unità e
+              occupanti e non in una pagina separata. */}
+          <Section
+            titolo="Condizioni di sicurezza delle parti comuni"
+            descrizione="Stato delle parti comuni e degli impianti alla data dell'ultima verifica, come richiesto dall'art. 1130, n. 6, c.c. I condòmini le vedono tra i documenti del condominio."
+            azioni={<CondizioneSicurezzaForm condominioId={condominio.id} />}
+          >
+            {condizioni.length ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Parte comune o impianto</TableHead>
+                    <TableHead>Stato rilevato</TableHead>
+                    <TableHead>Ultima verifica</TableHead>
+                    <TableHead>
+                      <span className="sr-only">Azioni</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {condizioni.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium">
+                        <RowIcon icon={ShieldCheck}>{c.parte}</RowIcon>
+                      </TableCell>
+                      <TableCell etichetta="Stato rilevato">
+                        {c.descrizione ? (
+                          <span className="flex flex-col gap-1">
+                            <span className="text-sm">{c.descrizione}</span>
+                            {c.documento_url && (
+                              <a
+                                href={c.documento_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-accent-ink hover:underline"
+                              >
+                                Certificato
+                                <ExternalLink className="size-3" aria-hidden="true" />
+                              </a>
+                            )}
+                          </span>
+                        ) : c.documento_url ? (
+                          <a
+                            href={c.documento_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-accent-ink hover:underline"
+                          >
+                            Certificato
+                            <ExternalLink className="size-3" aria-hidden="true" />
+                          </a>
+                        ) : (
+                          <Vuoto />
+                        )}
+                      </TableCell>
+                      <TableCell etichetta="Ultima verifica">
+                        {c.data_ultima_verifica ? (
+                          formatData(c.data_ultima_verifica)
+                        ) : (
+                          <Vuoto />
+                        )}
+                      </TableCell>
+                      <TableCell className="md:text-right">
+                        <EliminaCondizioneButton
+                          id={c.id}
+                          condominioId={condominio.id}
+                          parte={c.parte}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <EmptyState
+                compatta
+                icon={ShieldCheck}
+                title="Nessuna condizione di sicurezza registrata"
+                description="Annota lo stato degli impianti e delle parti comuni (impianto elettrico, ascensore, canna fumaria, facciata) con la data dell'ultima verifica: è parte del registro di anagrafe che la legge affida all'amministratore."
+                action={<CondizioneSicurezzaForm condominioId={condominio.id} />}
               />
             )}
           </Section>

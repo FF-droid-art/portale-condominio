@@ -5,7 +5,7 @@ import { UserPlus } from "lucide-react";
 import { aggiungiSoggetto } from "./actions";
 import { haQuota } from "@/lib/ruoli";
 import { Dialog } from "@/components/ui/dialog";
-import { Checkbox, Field, FormGrid, Input, Select } from "@/components/ui/input";
+import { Checkbox, Field, FormGrid, Input, Select, Textarea } from "@/components/ui/input";
 import { Alert, FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
@@ -40,6 +40,8 @@ export function ProprietarioForm({
   const [nominativo, setNominativo] = useState("");
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");
+  const [codiceFiscale, setCodiceFiscale] = useState("");
+  const [residenza, setResidenza] = useState("");
   const [tipoSoggetto, setTipoSoggetto] = useState("proprietario");
   const [quota, setQuota] = useState("100");
   const [dirittoVoto, setDirittoVoto] = useState(true);
@@ -52,6 +54,8 @@ export function ProprietarioForm({
     setNominativo("");
     setEmail("");
     setTelefono("");
+    setCodiceFiscale("");
+    setResidenza("");
     setTipoSoggetto("proprietario");
     setQuota("100");
     setDirittoVoto(true);
@@ -72,6 +76,8 @@ export function ProprietarioForm({
         nominativo,
         email,
         telefono: telefono.trim() || null,
+        codiceFiscale: codiceFiscale.trim() || null,
+        residenzaDomicilio: residenza.trim() || null,
         tipoSoggetto,
         quota: Number(quota),
         dirittoVoto,
@@ -173,6 +179,41 @@ export function ProprietarioForm({
                 />
               </Field>
             </FormGrid>
+
+            {/* Codice fiscale e residenza sono richiesti dall'art. 1130,
+                n. 6, c.c. per il registro di anagrafe, ma restano
+                facoltativi qui: spesso si collega la persona all'unità
+                prima di avere i suoi dati completi, e si aggiungono poi
+                dalla riga del soggetto. */}
+            <Field
+              id="soggetto_codice_fiscale"
+              label="Codice fiscale"
+              hint="Facoltativo, per il registro di anagrafe. 16 caratteri, o 11 cifre per una società."
+            >
+              <Input
+                value={codiceFiscale}
+                onChange={(e) => setCodiceFiscale(e.target.value.toUpperCase())}
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+                maxLength={16}
+                placeholder="RSSMRA80A01H501U"
+                className="cifre"
+              />
+            </Field>
+
+            <Field
+              id="soggetto_residenza"
+              label="Residenza o domicilio"
+              hint="Facoltativa. Via, numero civico, CAP, comune e provincia."
+            >
+              <Textarea
+                rows={2}
+                value={residenza}
+                onChange={(e) => setResidenza(e.target.value)}
+                placeholder="Via Roma 1, 00100 Roma (RM)"
+              />
+            </Field>
 
             <Field
               id="tipo_soggetto"

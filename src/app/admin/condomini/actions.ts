@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { normalizzaDatiCatastali } from "@/lib/anagrafe";
 import { resend, MITTENTE_EMAIL } from "@/lib/resend";
 
 export type StatoForm = { errore?: string } | undefined;
@@ -217,13 +219,26 @@ export async function creaUnita(
     ? leggiMillesimo(formData, `mill_${tabGenerale.id}`)
     : leggiMillesimo(formData, "mill_generale");
 
+  // Dati catastali (art. 1130, n. 6, c.c.): facoltativi anche qui, si
+  // compilano quando si ha la visura sotto gli occhi.
+  const catasto = normalizzaDatiCatastali({
+    foglio: String(formData.get("catasto_foglio") ?? ""),
+    particella: String(formData.get("catasto_particella") ?? ""),
+    subalterno: String(formData.get("catasto_subalterno") ?? ""),
+    categoria: String(formData.get("catasto_categoria") ?? ""),
+  });
+
   const { data: unita, error } = await supabase
     .from("unita")
     .insert({
       condominio_id: condominioId,
       identificativo,
-      piano: null,
+      piano: String(formData.get("piano") ?? "").trim() || null,
       millesimi_proprieta: millesimiGenerale ?? 0,
+      catasto_foglio: catasto.foglio,
+      catasto_particella: catasto.particella,
+      catasto_subalterno: catasto.subalterno,
+      catasto_categoria: catasto.categoria,
     })
     .select("id")
     .single();
@@ -248,4 +263,75 @@ export async function creaUnita(
 
   revalidatePath("/admin/condomini");
   revalidatePath(`/admin/condomini/${condominioId}`);
+}
+
+/* -------------------------------------------------------------------------
+   Condizioni di sicurezza delle parti comuni (art. 1130, n. 6, c.c.)
+
+   Il registro di anagrafe deve contenere "ogni dato relativo alle
+   condizioni di sicurezza delle parti comuni": una voce per parte comune
+   o impianto, con la data dell'ultima verifica e il riferimento al
+   certificato. È il quadro dello stato di fatto, non il piano delle
+   manutenzioni future (che resta in manutenzioni_programmate).
+   ------------------------------------------------------------------------- */
+
+export async function registraCondizioneSicurezza(
+  _stato: StatoForm,
+  formData: FormData
+): Promise<StatoForm> {
+  const condominioId = String(formData.get("condominio_id") ?? "");
+  const parte = String(formData.get("parte") ?? "").trim();
+  const descrizione = String(formData.get("descrizione") ?? "").trim();
+  const dataUltimaVerifica = String(formData.get("data_ultima_verifica") ?? "").trim();
+  const documentoUrl = String(formData.get("documento_url") ?? "").trim();
+
+  if (!condominioId) return { errore: "Condominio non valido." };
+  if (!parte) {
+    return { errore: "Indica a quale parte comune o impianto si riferisce la voce." };
+  }
+  if (documentoUrl && !/^https?:\/\//i.test(documentoUrl)) {
+    return { errore: "Il riferimento al documento deve essere un indirizzo http:// o https://." };
+  }
+
+  await richiedeAmministratore();
+  const supabase = await createClient();
+
+  const { error } = await supabase.from("condizioni_sicurezza_parti_comuni").insert({
+    condominio_id: condominioId,
+    parte,
+    descrizione: descrizione || null,
+    data_ultima_verifica: dataUltimaVerifica || null,
+    documento_url: documentoUrl || null,
+  });
+
+  if (error) {
+    console.error("[condizioni-sicurezza] inserimento non riuscito", error);
+    return { errore: "Impossibile registrare la voce. Riprova." };
+  }
+
+  revalidatePath(`/admin/condomini/${condominioId}`);
+  revalidatePath("/area-riservata/documenti");
+}
+
+export async function eliminaCondizioneSicurezza(
+  id: string,
+  condominioId: string
+): Promise<{ errore?: string }> {
+  if (!id) return { errore: "Voce non valida." };
+
+  await richiedeAmministratore();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("condizioni_sicurezza_parti_comuni")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("[condizioni-sicurezza] eliminazione non riuscita", error);
+    return { errore: "Impossibile eliminare la voce. Riprova." };
+  }
+
+  revalidatePath(`/admin/condomini/${condominioId}`);
+  revalidatePath("/area-riservata/documenti");
+  return {};
 }
