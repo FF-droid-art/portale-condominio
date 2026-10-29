@@ -149,8 +149,10 @@ async function notificaRipartizioni(
           )} per la spesa "${spesa?.descrizione ?? ""}".</p><p>Accedi al portale per i dettagli.</p>`,
         })),
     });
-  } catch {
-    // ignorato di proposito, vedi commento sopra
+  } catch (errore) {
+    // ignorato di proposito, vedi commento sopra — logghiamo per lo stesso
+    // motivo di notificaNuovaAssemblea (COD-09 in docs/audit/01-codice.md).
+    console.error("notificaRipartizioni fallita", { spesaId, errore });
   }
 }
 

@@ -138,7 +138,11 @@ export async function terminaImpersonazione(): Promise<void> {
   // la chiamata fallisce non blocchiamo comunque il ritorno in dashboard.
   if (salvato.target_access_token) {
     const service = createServiceClient();
-    await service.auth.admin.signOut(salvato.target_access_token, "global").catch(() => {});
+    await service.auth.admin
+      .signOut(salvato.target_access_token, "global")
+      .catch((errore) =>
+        console.error("terminaImpersonazione: revoca sessione impersonata fallita", { errore })
+      );
   }
 
   redirect("/admin/utenti");

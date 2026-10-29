@@ -110,8 +110,16 @@ export async function inviaNotificaEmailMultipla(input: {
         });
       }
     }
-  } catch {
-    // Best-effort: vedi il commento in testa al file.
+  } catch (errore) {
+    // Best-effort: vedi il commento in testa al file. L'operazione che ha
+    // generato l'avviso resta comunque andata a buon fine; logghiamo solo
+    // perché altrimenti un invio fallito non lascia nessuna traccia (COD-09
+    // in docs/audit/01-codice.md).
+    console.error("inviaNotificaEmailMultipla: invio Resend fallito", {
+      tipoEvento: input.tipoEvento,
+      destinatari: email.length,
+      errore,
+    });
     return { inviate: 0, saltate };
   }
 
@@ -148,8 +156,14 @@ export async function inviaNotifichePersonalizzate(input: {
         })
       )
     );
-  } catch {
-    // Best-effort: vedi il commento in testa al file.
+  } catch (errore) {
+    // Best-effort: vedi il commento in testa al file e la nota su COD-09
+    // in inviaNotificaEmailMultipla sopra.
+    console.error("inviaNotifichePersonalizzate: invio Resend fallito", {
+      tipoEvento: input.tipoEvento,
+      destinatari: daInviare.length,
+      errore,
+    });
     return { inviate: 0, saltate: messaggi.length - daInviare.length };
   }
 

@@ -67,7 +67,11 @@ async function notificaNuovaAssemblea(condominioId: string, dataAssemblea: strin
       subject: "Nuova assemblea convocata",
       html: `<p>È stata convocata una nuova assemblea ${tipo} per il ${formatDataOra(dataAssemblea)}.</p><p>Accedi al portale per i dettagli.</p>`,
     });
-  } catch {
-    // ignorato di proposito, vedi commento sopra
+  } catch (errore) {
+    // ignorato di proposito, vedi commento sopra — ma logghiamo perché
+    // altrimenti un fallimento qui (es. la query su unita/proprietari, non
+    // solo l'invio Resend) non lascerebbe nessuna traccia (COD-09 in
+    // docs/audit/01-codice.md).
+    console.error("notificaNuovaAssemblea fallita", { condominioId, errore });
   }
 }
