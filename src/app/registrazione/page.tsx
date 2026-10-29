@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { MailCheck } from "lucide-react";
 import { registrati } from "./actions";
 import { AuthShell, AuthLink } from "@/components/auth-shell";
@@ -91,6 +92,15 @@ export default function RegistrazionePage() {
         </Field>
 
         <TurnstileWidget onChange={setCaptchaPronto} />
+
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Creando l&apos;account accetti il trattamento dei tuoi dati descritto
+          nella{" "}
+          <Link href="/privacy" className="font-medium text-accent-ink underline-offset-4 hover:underline">
+            privacy policy
+          </Link>
+          .
+        </p>
 
         <FormError>{stato?.errore}</FormError>
 
