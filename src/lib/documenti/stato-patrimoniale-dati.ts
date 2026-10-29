@@ -1,6 +1,5 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { getUtenteCorrente } from "@/lib/supabase/dal";
 import type { Documento } from "@/lib/documenti/modello";
 import {
   costruisciStatoPatrimoniale,
@@ -17,14 +16,6 @@ const ETICHETTA_QUALIFICA: Record<string, string> = {
   assegnatario: "Assegnatario",
 };
 
-type SoggettoUnita = {
-  quota_possesso: number;
-  tipo_soggetto: string;
-  attivo: boolean;
-  utente: { nome: string; cognome: string } | null;
-  anagrafica: { nominativo: string } | null;
-};
-
 type RipartizioneUnita = {
   importo_dovuto: number;
   stato_pagamento: string;
@@ -34,13 +25,41 @@ type RipartizioneUnita = {
   spesa: { descrizione: string; categoria: string; data_spesa: string } | null;
 };
 
+/** Riga di `unita_soggetti`. */
+type SoggettoRpc = {
+  nominativo: string;
+  tipo_soggetto: string;
+  quota_possesso: number;
+  attivo: boolean;
+};
+
+/** Riga di `condominio_amministratore`. */
+type AmministratoreRpc = { nome: string; cognome: string; email: string };
+
 /**
  * Raccoglie tutto ciò che serve allo "stato patrimoniale" di una unità.
  *
- * Sta in un modulo a parte, come `documenti-dati.ts` per le assemblee: le query
- * passano dal client con la sessione dell'utente, quindi la RLS resta l'unico
- * controllo di accesso — un amministratore non può generare il documento di
- * un'unità che non gestisce, perché per lui quell'unità non esiste.
+ * Sta in `src/lib/documenti/` e non dentro la cartella di una route perché lo
+ * usano due aree: l'amministratore (`/admin/unita/[id]/stato-patrimoniale`) e
+ * il titolare dell'unità (`/area-riservata/unita/[id]/stato-patrimoniale`).
+ * Come per il rendiconto, non esiste una variante per ruolo: la funzione
+ * riceve l'id dell'unità e lascia decidere alla RLS e alle funzioni
+ * `security definer`.
+ *
+ * Unità, condominio, ripartizioni e valori millesimali passano dalla sessione
+ * dell'utente: la RLS restituisce l'unità al solo amministratore che la
+ * gestisce e a chi la possiede, e per tutti gli altri il documento non esiste
+ * (404). Fanno eccezione due dati che la RLS stringe più del dovuto per questo
+ * documento:
+ *
+ *  - i SOGGETTI collegati: `unita_proprietari_select` mostra al condòmino solo
+ *    la propria riga, quindi un comproprietario leggerebbe un documento che
+ *    dichiara il suo 50% e tace sull'altro. Si passa da `unita_soggetti`, che
+ *    verifica `possiede_unita()` al proprio interno;
+ *  - l'AMMINISTRATORE: un condòmino non può leggere la riga "utenti" di chi
+ *    amministra. Si passa da `condominio_amministratore`, e il nome che
+ *    compare è quello di chi amministra lo stabile — non di chi sta
+ *    scaricando il documento.
  */
 export async function costruisciDocumentoStatoPatrimoniale(
   unitaId: string
@@ -69,33 +88,40 @@ export async function costruisciDocumentoStatoPatrimoniale(
     intestatario_conto: string | null;
   } | null;
 
-  const [{ data: soggettiData }, { data: ripartizioniData }, { data: valoriData }] =
-    await Promise.all([
-      supabase
-        .from("unita_proprietari")
-        .select(
-          "quota_possesso, tipo_soggetto, attivo, utente:utente_id(nome, cognome), anagrafica:anagrafica_id(nominativo)"
-        )
-        .eq("unita_id", unitaId)
-        .order("created_at"),
-      supabase
-        .from("ripartizioni")
-        .select(
-          "importo_dovuto, stato_pagamento, data_scadenza, data_pagamento, codice_avviso, spesa:spesa_id(descrizione, categoria, data_spesa)"
-        )
-        .eq("unita_id", unitaId),
-      supabase
-        .from("valori_millesimali")
-        .select("valore, tabella:tabella_id(nome)")
-        .eq("unita_id", unitaId),
-    ]);
+  const [
+    { data: soggettiData, error: soggettiErrore },
+    { data: ripartizioniData },
+    { data: valoriData },
+    { data: amministratoreData },
+  ] = await Promise.all([
+    supabase.rpc("unita_soggetti", { p_unita_id: unitaId }),
+    supabase
+      .from("ripartizioni")
+      .select(
+        "importo_dovuto, stato_pagamento, data_scadenza, data_pagamento, codice_avviso, spesa:spesa_id(descrizione, categoria, data_spesa)"
+      )
+      .eq("unita_id", unitaId),
+    supabase
+      .from("valori_millesimali")
+      .select("valore, tabella:tabella_id(nome)")
+      .eq("unita_id", unitaId),
+    supabase
+      .rpc("condominio_amministratore", { p_condominio_id: unita.condominio_id })
+      .maybeSingle(),
+  ]);
 
-  const soggetti = ((soggettiData ?? []) as unknown as SoggettoUnita[])
+  // Un elenco di soggetti vuoto per un guasto si leggerebbe come "unità senza
+  // titolari": su un documento che accompagna una compravendita non è una
+  // sfumatura. Si interrompe.
+  if (soggettiErrore) {
+    console.error("Lettura dei soggetti dell'unità fallita", { unitaId, soggettiErrore });
+    throw new Error("Impossibile leggere i soggetti collegati all'unità.");
+  }
+
+  const soggetti = ((soggettiData ?? []) as SoggettoRpc[])
     .filter((s) => s.attivo !== false)
     .map((s) => ({
-      nominativo:
-        s.anagrafica?.nominativo ??
-        (s.utente ? `${s.utente.nome} ${s.utente.cognome}` : "Soggetto non indicato"),
+      nominativo: s.nominativo,
       qualifica: ETICHETTA_QUALIFICA[s.tipo_soggetto] ?? s.tipo_soggetto,
       quota: s.quota_possesso,
     }));
@@ -123,15 +149,13 @@ export async function costruisciDocumentoStatoPatrimoniale(
     .map((v) => ({ nome: v.tabella!.nome, valore: v.valore }))
     .sort((a, b) => a.nome.localeCompare(b.nome, "it"));
 
-  const utente = await getUtenteCorrente();
-
   return costruisciDocumento({
     condominio,
     unita,
     soggetti,
     partite,
     millesimiPerTabella,
-    utente,
+    amministratore: amministratoreData as AmministratoreRpc | null,
   });
 }
 
@@ -148,7 +172,7 @@ function costruisciDocumento(input: {
   soggetti: { nominativo: string; qualifica: string; quota: number }[];
   partite: PartitaUnita[];
   millesimiPerTabella: { nome: string; valore: number }[];
-  utente: { nome: string; cognome: string; email: string } | null;
+  amministratore: { nome: string; cognome: string; email: string } | null;
 }): Documento {
   return costruisciStatoPatrimoniale({
     condominio: {
@@ -168,8 +192,12 @@ function costruisciDocumento(input: {
     soggetti: input.soggetti,
     partite: input.partite,
     annoRiferimento: Number(oggiLocale().slice(0, 4)),
-    amministratore: input.utente
-      ? { nome: input.utente.nome, cognome: input.utente.cognome, email: input.utente.email }
+    amministratore: input.amministratore
+      ? {
+          nome: input.amministratore.nome,
+          cognome: input.amministratore.cognome,
+          email: input.amministratore.email,
+        }
       : null,
     generatoIl: new Date().toISOString(),
   });

@@ -11,12 +11,17 @@ import { Button } from "@/components/ui/button";
  * È un componente client per una sola ragione: l'indirizzo del PDF cambia con
  * l'anno scelto, e un collegamento deve poterlo seguire in una scheda nuova —
  * cosa che un modulo inviato al server non farebbe.
+ *
+ * L'indirizzo di base arriva dal chiamante invece di essere composto qui: lo
+ * stesso rendiconto si scarica dalla scheda del condominio lato amministratore
+ * e dalla pagina "Il mio condominio" lato condòmino, su due route diverse.
  */
 export function ScaricaRendiconto({
-  condominioId,
+  href,
   anni,
 }: {
-  condominioId: string;
+  /** Route del PDF, senza parametri: ci viene aggiunto `?anno=`. */
+  href: string;
   /** Anni per cui esistono movimenti, dal più recente. */
   anni: number[];
 }) {
@@ -38,7 +43,7 @@ export function ScaricaRendiconto({
         ))}
       </Select>
       <Button
-        href={`/admin/condomini/${condominioId}/rendiconto?anno=${anno}`}
+        href={`${href}?anno=${anno}`}
         target="_blank"
         rel="noopener noreferrer"
         variant="secondary"

@@ -1,4 +1,4 @@
-import { CalendarClock, Home, Wallet } from "lucide-react";
+import { Building2, CalendarClock, Home, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
 import { PageBody, PageHeader } from "@/components/ui/page-header";
@@ -6,6 +6,7 @@ import { Section } from "@/components/ui/card";
 import { StatCard, StatGrid } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatData, formatMillesimi, formatValuta } from "@/lib/format";
 import { ElencoRipartizioni, type RipartizioneCondomino } from "./elenco-ripartizioni";
 
@@ -102,6 +103,12 @@ export default async function AreaRiservataPage() {
       <Section
         titolo="Le tue unità"
         descrizione="Le unità immobiliari collegate al tuo account, con i millesimi su cui vengono calcolate le tue quote."
+        azioni={
+          <Button href="/area-riservata/condominio" variant="ghost" size="sm">
+            <Building2 className="size-4" aria-hidden="true" />
+            Rendiconto e millesimi
+          </Button>
+        }
       >
         {!unitaPossedute.length ? (
           <EmptyState

@@ -75,8 +75,12 @@ export type QuotaRendiconto = {
   dataPagamento: string | null;
 };
 
+/**
+ * Solo stato e priorità: alla nota sintetica servono i CONTEGGI delle
+ * questioni pendenti, non i titoli — che possono descrivere un guasto dentro
+ * casa d'altri e non vanno letti da chi estrae copia del rendiconto.
+ */
 export type SegnalazioneRendiconto = {
-  titolo: string;
   stato: StatoSegnalazione;
   priorita: PrioritaSegnalazione;
 };
@@ -188,6 +192,44 @@ function chiaveData(data: string | null): string {
 function percentuale(parte: number, totale: number): number {
   if (!totale) return 0;
   return (parte / totale) * 100;
+}
+
+/** Estremi accettati per un anno di gestione: fuori da qui è un refuso. */
+const ANNO_MINIMO = 1900;
+const ANNO_MASSIMO = 2200;
+
+/**
+ * Anno del rendiconto chiesto da un parametro di URL.
+ *
+ * Vive qui, e non dentro le due route che scaricano il PDF, perché le route
+ * sono due — amministratore e condòmino — e devono interpretare `?anno=` allo
+ * stesso modo. `annoCorrente` arriva dal chiamante (che lo prende da
+ * `oggiLocale()`, non dall'orologio del server, che il 1° gennaio direbbe
+ * l'anno sbagliato) così la funzione resta pura e verificabile.
+ */
+export function annoRendiconto(parametro: string | null, annoCorrente: number): number {
+  const richiesto = Number(parametro);
+  return Number.isInteger(richiesto) && richiesto >= ANNO_MINIMO && richiesto <= ANNO_MASSIMO
+    ? richiesto
+    : annoCorrente;
+}
+
+/**
+ * Anni selezionabili per il rendiconto, dal più recente.
+ *
+ * Sono gli anni in cui risulta almeno una spesa, più quello corrente — così il
+ * prospetto è scaricabile anche a gennaio, quando ancora non c'è nulla.
+ * Le date sono stringhe di calendario ("aaaa-mm-gg") e si leggono come tali:
+ * passare da `new Date()` sposterebbe il 1° gennaio all'anno precedente a
+ * seconda del fuso.
+ */
+export function anniRendiconto(dateSpesa: (string | null)[], annoCorrente: number): number[] {
+  const anni = new Set<number>([annoCorrente]);
+  for (const data of dateSpesa) {
+    const anno = annoDi(data, 0);
+    if (anno >= ANNO_MINIMO && anno <= ANNO_MASSIMO) anni.add(anno);
+  }
+  return [...anni].sort((a, b) => b - a);
 }
 
 export function riepilogaRendiconto(input: {

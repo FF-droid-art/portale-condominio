@@ -109,6 +109,7 @@ Protezione verificata: `src/app/area-riservata/layout.tsx` chiama `richiedeUtent
 - `/area-riservata/segnalazioni`, `/area-riservata/segnalazioni/[id]` — apertura/ritiro ticket
 - `/area-riservata/spazi` — prenotazione spazi comuni
 - `/area-riservata/calendario` — vista eventi personale
+- `/area-riservata/condominio` — "Il mio condominio": dati dello stabile e dell'amministratore, rendiconto annuale in PDF (`condominio/[id]/rendiconto/route.ts`), tabelle millesimali in lettura, stato patrimoniale delle proprie unità (`unita/[id]/stato-patrimoniale/route.ts`)
 - `/area-riservata/documenti` — consultazione archivio
 - `/area-riservata/notifiche` — preferenze di notifica (opt-out per tipo evento)
 - `ImpersonazioneBanner` (`impersonazione-banner.tsx`) mostrato quando un amministratore sta "visualizzando come" un condòmino, con pulsante di ripristino sessione
@@ -147,7 +148,7 @@ Protezione verificata: `src/app/area-riservata/layout.tsx` chiama `richiedeUtent
 | `movimenti_bancari` | Righe di estratto conto importate | `condominio_id`; `ripartizione_id?`; `import_hash` univoco per condominio (idempotenza import) |
 | `condizioni_sicurezza_parti_comuni` | Registro delle condizioni di sicurezza delle parti comuni (art. 1130 n. 6 c.c.) | `condominio_id`; `parte`, `data_ultima_verifica?`, `documento_url?` (link, nessun upload proprio) |
 
-Funzioni/trigger rilevanti verificati: `handle_new_user` (provisioning riga `utenti` alla registrazione, forza ruolo a `condomino` salvo richiesta esplicita `amministratore`), `blocca_cambio_ruolo_non_autorizzato` (trigger `before update` su `utenti` che impedisce auto-promozione), `ruolo_corrente()`, `possiede_unita()`, `appartiene_condominio()` (helper `security definer` usati nelle policy), `importa_spese_storiche` (funzione di import bulk, **non** `security definer` — gira con i privilegi del chiamante, quindi dipende dalle policy RLS di `spese`/`ripartizioni`).
+Funzioni/trigger rilevanti verificati: `handle_new_user` (provisioning riga `utenti` alla registrazione, forza ruolo a `condomino` salvo richiesta esplicita `amministratore`), `blocca_cambio_ruolo_non_autorizzato` (trigger `before update` su `utenti` che impedisce auto-promozione), `ruolo_corrente()`, `possiede_unita()`, `appartiene_condominio()` (helper `security definer` usati nelle policy), `importa_spese_storiche` (funzione di import bulk, **non** `security definer` — gira con i privilegi del chiamante, quindi dipende dalle policy RLS di `spese`/`ripartizioni`); `condominio_amministratore`, `condominio_rendiconto_quote`, `condominio_rendiconto_segnalazioni`, `condominio_unita_millesimi`, `condominio_valori_millesimali` (helper `security definer` con verifica interna `admin_possiede_condominio() or appartiene_condominio()`, aggiunti per dare al condòmino rendiconto e tabelle millesimali completi senza allargare le policy di riga) e `unita_soggetti` (stesso schema, perimetro `possiede_unita()`).
 
 ### 3.2 Tabelle con RLS attiva e nomi delle policy (dettaglio comportamentale rimandato a Fase 4)
 
@@ -280,11 +281,12 @@ Per ciascuna feature: pagine/route, server actions, componenti, logica di librer
 ### 7.7 Documenti legali generati (convocazione, verbale, rendiconto, stato patrimoniale, sollecito)
 - Lib modello: `src/lib/documenti/modello.ts` (blocchi tipizzati, indipendenti dal formato)
 - Lib render PDF: `src/lib/documenti/pdf.ts` (pdf-lib, font standard Helvetica/WinAnsi)
-- Rendiconto (art. 1130-bis c.c., tripartizione registro/riepilogo/nota + stato ripartizione): `src/lib/documenti/rendiconto.ts`, dati in `src/app/admin/condomini/[id]/rendiconto-dati.ts`, download via `rendiconto/route.ts`
-- Stato patrimoniale unità (art. 63 disp. att. c.c., tre fasce temporali): `src/lib/documenti/stato-patrimoniale.ts`, dati in `src/app/admin/unita/[id]/stato-patrimoniale-dati.ts`, download via `stato-patrimoniale/route.ts`
+- Rendiconto (art. 1130-bis c.c., tripartizione registro/riepilogo/nota + stato ripartizione): `src/lib/documenti/rendiconto.ts`, dati in `src/lib/documenti/rendiconto-dati.ts` (condivisi fra le due aree), download via `src/app/admin/condomini/[id]/rendiconto/route.ts` e `src/app/area-riservata/condominio/[id]/rendiconto/route.ts`
+- Stato patrimoniale unità (art. 63 disp. att. c.c., tre fasce temporali): `src/lib/documenti/stato-patrimoniale.ts`, dati in `src/lib/documenti/stato-patrimoniale-dati.ts`, download via `src/app/admin/unita/[id]/stato-patrimoniale/route.ts` e `src/app/area-riservata/unita/[id]/stato-patrimoniale/route.ts`
 - Sollecito (3 livelli): `src/lib/documenti/sollecito.ts`, dati in `src/app/admin/solleciti/sollecito-dati.ts`, download via `src/app/admin/solleciti/[unitaId]/route.ts`
 - Convocazione/verbale assemblea: dati in `src/app/admin/assemblee/[id]/documenti-dati.ts`, download via `src/app/admin/assemblee/[id]/documenti/route.ts`
-- Tutti i Route Handler di download verificano solo `ruolo === 'amministratore'`; l'isolamento per condominio/unità è delegato alla RLS sulle query a monte (documentato esplicitamente nei commenti dei singoli `route.ts`)
+- I Route Handler di download lato admin verificano solo `ruolo === 'amministratore'`; l'isolamento per condominio/unità è delegato alla RLS sulle query a monte (documentato esplicitamente nei commenti dei singoli `route.ts`)
+- I due Route Handler lato condòmino (rendiconto, stato patrimoniale) chiamano `richiedeUtente()` e poi verificano esplicitamente `appartiene_condominio()` / `possiede_unita()` con una query vera, oltre alla RLS e al controllo interno delle funzioni `security definer`: l'id sta nell'URL, e su quei documenti un controllo ridondante vale più di un commento
 
 ### 7.8 Morosità e solleciti
 - Admin: `src/app/admin/solleciti/**` (`genera-sollecito-button.tsx`, `actions.ts`, pagina elenco)

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+  anniRendiconto,
+  annoRendiconto,
   costruisciRendiconto,
   riepilogaRendiconto,
   type DatiRendiconto,
@@ -307,9 +309,9 @@ describe("riepilogaRendiconto — questioni pendenti", () => {
         quota({ unita: "B", importo: 10, dataPagamento: "2026-02-02" }),
       ],
       segnalazioni: [
-        { titolo: "Ascensore fermo", stato: "aperta", priorita: "alta" },
-        { titolo: "Lampada rotta", stato: "in_corso", priorita: "normale" },
-        { titolo: "Vecchia", stato: "chiusa", priorita: "alta" },
+        { stato: "aperta", priorita: "alta" },
+        { stato: "in_corso", priorita: "normale" },
+        { stato: "chiusa", priorita: "alta" },
       ],
       manutenzioni: [
         { titolo: "Revisione caldaia", dataProssima: "2026-10-01", stato: "programmata" },
@@ -334,7 +336,7 @@ describe("costruisciRendiconto", () => {
     anno: 2026,
     uscite: [uscita({ categoria: "ascensore", importo: 1200 })],
     quote: [quota({ unita: "Interno 1", importo: 300 })],
-    segnalazioni: [{ titolo: "Ascensore fermo", stato: "aperta", priorita: "alta" }],
+    segnalazioni: [{ stato: "aperta", priorita: "alta" }],
     manutenzioni: [
       { titolo: "Revisione caldaia", dataProssima: "2026-10-01", stato: "programmata" },
     ],
@@ -426,5 +428,46 @@ describe("costruisciRendiconto", () => {
     const nota = costruisciRendiconto(dati).blocchi.find((b) => b.tipo === "nota");
     expect(nota?.tipo === "nota" && nota.testo).toContain("art. 1130-bis");
     expect(nota?.tipo === "nota" && nota.testo).toContain("art. 1130 n. 10");
+  });
+});
+
+describe("annoRendiconto", () => {
+  test("accetta un anno plausibile scritto nell'URL", () => {
+    expect(annoRendiconto("2024", 2026)).toBe(2024);
+  });
+
+  test("ripiega sull'anno corrente quando il parametro manca o è illeggibile", () => {
+    expect(annoRendiconto(null, 2026)).toBe(2026);
+    expect(annoRendiconto("", 2026)).toBe(2026);
+    expect(annoRendiconto("quest'anno", 2026)).toBe(2026);
+    expect(annoRendiconto("2024,5", 2026)).toBe(2026);
+  });
+
+  test("rifiuta gli anni fuori scala invece di generare un documento assurdo", () => {
+    expect(annoRendiconto("1799", 2026)).toBe(2026);
+    expect(annoRendiconto("99999", 2026)).toBe(2026);
+    expect(annoRendiconto("-2024", 2026)).toBe(2026);
+  });
+});
+
+describe("anniRendiconto", () => {
+  test("include l'anno corrente anche senza alcuna spesa", () => {
+    expect(anniRendiconto([], 2026)).toEqual([2026]);
+  });
+
+  test("elenca gli anni con movimenti, dal più recente, senza ripetizioni", () => {
+    expect(
+      anniRendiconto(["2024-03-01", "2024-11-30", "2025-01-02", "2026-07-07"], 2026)
+    ).toEqual([2026, 2025, 2024]);
+  });
+
+  test("ignora le date mancanti o illeggibili", () => {
+    expect(anniRendiconto([null, "", "data sbagliata", "2023-05-05"], 2026)).toEqual([2026, 2023]);
+  });
+
+  test("legge la data come stringa di calendario, non come istante", () => {
+    // Il 1° gennaio: con new Date() e un fuso a ovest di Greenwich finirebbe
+    // nell'anno precedente.
+    expect(anniRendiconto(["2025-01-01"], 2026)).toEqual([2026, 2025]);
   });
 });

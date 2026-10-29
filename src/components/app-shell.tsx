@@ -82,7 +82,16 @@ const NAV_ADMIN: GruppoNav[] = [
 ];
 
 const NAV_CONDOMINO: GruppoNav[] = [
-  { voci: [{ href: "/area-riservata", label: "Riepilogo", icon: LayoutDashboard }] },
+  {
+    voci: [
+      { href: "/area-riservata", label: "Riepilogo", icon: LayoutDashboard },
+      // Rendiconto, tabelle millesimali e stato patrimoniale: i documenti che
+      // l'art. 1130-bis c.c. dà diritto di consultare, in una voce propria e
+      // non nascosti dentro "Documenti", che è l'archivio caricato a mano
+      // dall'amministratore.
+      { href: "/area-riservata/condominio", label: "Il mio condominio", icon: Building2 },
+    ],
+  },
   {
     titolo: "Partecipa",
     voci: [

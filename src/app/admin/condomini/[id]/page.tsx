@@ -36,7 +36,8 @@ import { TrasferisciCondominioButton } from "./trasferisci-condominio-button";
 import { EliminaCondominioButton } from "./elimina-condominio-button";
 import { NuovaUnitaForm } from "./nuova-unita-form";
 import { AvvisoForm } from "./avviso-form";
-import { ScaricaRendiconto } from "./scarica-rendiconto";
+import { ScaricaRendiconto } from "@/components/documenti/scarica-rendiconto";
+import { anniRendiconto } from "@/lib/documenti/rendiconto";
 
 const ETICHETTA_TIPO: Record<string, string> = {
   proprietario: "Proprietario",
@@ -142,13 +143,10 @@ export default async function CondominioDettaglioPage({
     );
   }, 0);
 
-  // Anni selezionabili per il rendiconto: quelli in cui c'è almeno una spesa,
-  // più quello corrente, così il prospetto è scaricabile anche a gennaio.
-  const anniRendiconto = [
-    ...new Set([annoCorrente, ...(spese ?? []).map((s) => new Date(s.data_spesa).getFullYear())]),
-  ]
-    .filter((a) => Number.isInteger(a))
-    .sort((a, b) => b - a);
+  const anniDisponibili = anniRendiconto(
+    (spese ?? []).map((s) => s.data_spesa as string),
+    annoCorrente
+  );
 
   // Una riga per (unità × occupante attivo). Le unità senza occupanti
   // producono comunque una riga (nominativo "—"). L'identificativo e i
@@ -489,7 +487,10 @@ export default async function CondominioDettaglioPage({
                 </CardDescription>
               </CardHeaderText>
             </CardHeader>
-            <ScaricaRendiconto condominioId={condominio.id} anni={anniRendiconto} />
+            <ScaricaRendiconto
+              href={`/admin/condomini/${condominio.id}/rendiconto`}
+              anni={anniDisponibili}
+            />
           </Card>
 
           <Card>

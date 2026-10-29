@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUtenteCorrente } from "@/lib/supabase/dal";
 import { generaPdf } from "@/lib/documenti/pdf";
-import { costruisciDocumentoStatoPatrimoniale } from "../stato-patrimoniale-dati";
+import { costruisciDocumentoStatoPatrimoniale } from "@/lib/documenti/stato-patrimoniale-dati";
 
 /**
  * Scaricamento dello "stato patrimoniale" di una unità.

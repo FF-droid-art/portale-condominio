@@ -208,4 +208,49 @@ describe.skipIf(!CONFIGURATO)("isolamento tenant (progetto Supabase di test)", (
     expect(error).toBeNull();
     expect(data).toEqual([]);
   });
+
+  // FEAT-02/FEAT-03: le funzioni security definer dietro al rendiconto e
+  // allo stato patrimoniale del condòmino. A differenza delle select dirette
+  // sopra, qui un accesso non autorizzato non restituisce "zero righe": la
+  // funzione stessa alza un'eccezione (vedi i commenti nella migrazione in
+  // supabase/schema.sql), quindi il test verifica l'errore, non un array vuoto.
+  test("un condòmino non può ottenere il rendiconto di un condominio che non è il suo", async () => {
+    const { data, error } = await clienteCondominoB.rpc("condominio_rendiconto_quote", {
+      p_condominio_id: condominioAId,
+    });
+    expect(data).toBeNull();
+    expect(error).not.toBeNull();
+  });
+
+  test("un amministratore non può ottenere il rendiconto di un condominio che non è il suo", async () => {
+    const { data, error } = await clienteAdminB.rpc("condominio_rendiconto_quote", {
+      p_condominio_id: condominioAId,
+    });
+    expect(data).toBeNull();
+    expect(error).not.toBeNull();
+  });
+
+  test("un condòmino non può leggere i soggetti collegati a un'unità che non è la sua", async () => {
+    const { data, error } = await clienteCondominoB.rpc("unita_soggetti", {
+      p_unita_id: unitaAId,
+    });
+    expect(data).toBeNull();
+    expect(error).not.toBeNull();
+  });
+
+  test("controllo positivo: il condòmino giusto ottiene davvero il proprio rendiconto e i propri soggetti", async () => {
+    const { data: quote, error: erroreQuote } = await clienteCondominoA.rpc(
+      "condominio_rendiconto_quote",
+      { p_condominio_id: condominioAId }
+    );
+    expect(erroreQuote).toBeNull();
+    expect(Array.isArray(quote)).toBe(true);
+
+    const { data: soggetti, error: erroreSoggetti } = await clienteCondominoA.rpc(
+      "unita_soggetti",
+      { p_unita_id: unitaAId }
+    );
+    expect(erroreSoggetti).toBeNull();
+    expect(Array.isArray(soggetti)).toBe(true);
+  });
 });

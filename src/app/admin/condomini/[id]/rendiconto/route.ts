@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getUtenteCorrente } from "@/lib/supabase/dal";
 import { generaPdf } from "@/lib/documenti/pdf";
+import { annoRendiconto } from "@/lib/documenti/rendiconto";
 import { oggiLocale } from "@/lib/fuso";
-import { costruisciDocumentoRendiconto } from "../rendiconto-dati";
+import { costruisciDocumentoRendiconto } from "@/lib/documenti/rendiconto-dati";
 
 /**
  * Scaricamento del rendiconto annuale di un condominio.
@@ -25,11 +26,10 @@ export async function GET(
 
   const { id } = await ctx.params;
 
-  const richiesto = Number(request.nextUrl.searchParams.get("anno"));
-  const anno =
-    Number.isInteger(richiesto) && richiesto >= 1900 && richiesto <= 2200
-      ? richiesto
-      : Number(oggiLocale().slice(0, 4));
+  const anno = annoRendiconto(
+    request.nextUrl.searchParams.get("anno"),
+    Number(oggiLocale().slice(0, 4))
+  );
 
   const documento = await costruisciDocumentoRendiconto(id, anno);
   if (!documento) {

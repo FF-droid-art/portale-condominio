@@ -3213,3 +3213,261 @@ create policy "condizioni_sicurezza_write_admin" on condizioni_sicurezza_parti_c
 -- dall'interfaccia (scheda unità e scheda condominio); estendere
 -- importa_condomini_unita_persone richiede di riscriverne l'intero
 -- corpo e va fatto con una migrazione dedicata.
+
+
+-- ============================================================
+-- Migrazione: accesso del condòmino ai documenti ufficiali
+--             (rendiconto e tabelle millesimali) — FEAT-02/FEAT-03
+-- Da applicare manualmente su Supabase (SQL Editor). Idempotente.
+--
+-- L'art. 1130-bis, comma 1, c.c. riconosce a OGNI condòmino il diritto
+-- di «prendere visione ed estrarre copia» del rendiconto annuale; le
+-- tabelle millesimali sono il presupposto di ogni riparto e sono
+-- allegate al regolamento, quindi note a tutti. Nel portale, però,
+-- entrambi erano generabili solo dall'amministratore
+-- (docs/audit/03-feature-conformita.md, FEAT-02 e FEAT-03).
+--
+-- PERCHÉ NON BASTAVA AGGIUNGERE LA PAGINA. Le policy di riga danno al
+-- condòmino solo ciò che riguarda la SUA unità:
+--   - "unita_select"                -> possiede_unita(id)
+--   - "ripartizioni_select"         -> possiede_unita(unita_id)
+--   - "valori_millesimali_select"   -> possiede_unita(unita_id)
+--   - "anagrafiche_select"          -> utente_id = auth.uid()
+--   - "utenti_select_self_or_admin" -> id = auth.uid() (quindi nemmeno
+--                                      il nome dell'amministratore)
+-- Sono policy giuste per la navigazione quotidiana e NON vanno
+-- allargate: allargarle esporrebbe quelle righe a ogni altra query
+-- dell'applicazione, non solo a questi due documenti. Ma con esse un
+-- rendiconto costruito dalla sessione del condòmino conterrebbe una
+-- sola unità su venti: non sarebbe "il rendiconto", sarebbe un
+-- estratto parziale spacciato per tale.
+--
+-- SOLUZIONE: lo stesso schema già usato per gli aggregati cross-utente
+-- (condominio_millesimi_totali, assemblea_riepilogo_quorum,
+-- sondaggio_risultati): funzioni "security definer" che verificano al
+-- loro interno l'appartenenza al condominio PRIMA di calcolare, e che
+-- restituiscono soltanto le colonne che quel documento richiede. In
+-- particolare non restituiscono mai:
+--   - i nominativi degli occupanti delle ALTRE unità (la tabella
+--     millesimale è per unità, non per persona);
+--   - il titolo o la descrizione delle segnalazioni altrui (al
+--     rendiconto servono solo stato e priorità, per contarle).
+-- Il perimetro resta quello dell'art. 1130-bis: posizione contabile
+-- per unità, non dati personali di chi ci abita.
+--
+-- Sulla morosità: la regola del progetto (mai dati di morosità in
+-- comunicazioni collettive visibili tra condòmini) riguarda gli invii
+-- — solleciti e avvisi, sempre individuali o in BCC. Lo stato di
+-- ripartizione per unità dentro il rendiconto è un'altra cosa: è parte
+-- del documento che la legge dà diritto di estrarre, ed è riferito
+-- all'unità ("Interno 3"), non al nominativo di chi la occupa.
+--
+-- Le funzioni servono ENTRAMBI i ruoli (il controllo interno ammette
+-- sia l'amministratore proprietario sia il condòmino appartenente),
+-- così la raccolta dati del rendiconto resta un solo percorso di
+-- codice invece di due che possono divergere.
+-- ============================================================
+
+-- 1) Chi amministra il condominio --------------------------------
+-- Serve in testa e in calce a rendiconto e stato patrimoniale. Un
+-- condòmino non può leggere la riga "utenti" dell'amministratore, ma
+-- ha diritto di sapere chi amministra e con quale recapito
+-- (art. 1129, comma 2, c.c.): la funzione restituisce quei soli campi.
+create or replace function public.condominio_amministratore(p_condominio_id uuid)
+returns table (nome text, cognome text, email text)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not (
+    admin_possiede_condominio(p_condominio_id) or appartiene_condominio(p_condominio_id)
+  ) then
+    raise exception 'Non autorizzato a leggere i dati di questo condominio.';
+  end if;
+
+  return query
+  select ut.nome, ut.cognome, ut.email
+  from condomini c
+  join utenti ut on ut.id = c.amministratore_id
+  where c.id = p_condominio_id;
+end;
+$$;
+
+grant execute on function public.condominio_amministratore(uuid) to authenticated;
+
+-- 2) Quote ripartite tra TUTTE le unità del condominio -----------
+-- È lo "stato di ripartizione" del rendiconto. Si restituiscono
+-- data_scadenza e data_spesa separate, non già risolte: la regola
+-- dell'anno di competenza (scadenza se c'è, altrimenti data della
+-- spesa) vive in TypeScript ed è condivisa con lo stato patrimoniale —
+-- duplicarla qui significherebbe non poterla più cambiare in un posto
+-- solo.
+create or replace function public.condominio_rendiconto_quote(p_condominio_id uuid)
+returns table (
+  identificativo text,
+  data_scadenza date,
+  data_spesa date,
+  importo numeric,
+  stato_pagamento text,
+  data_pagamento date
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not (
+    admin_possiede_condominio(p_condominio_id) or appartiene_condominio(p_condominio_id)
+  ) then
+    raise exception 'Non autorizzato a leggere il rendiconto di questo condominio.';
+  end if;
+
+  return query
+  select
+    u.identificativo,
+    r.data_scadenza,
+    s.data_spesa,
+    r.importo_dovuto,
+    r.stato_pagamento,
+    r.data_pagamento
+  from ripartizioni r
+  join unita u on u.id = r.unita_id
+  join spese s on s.id = r.spesa_id
+  where u.condominio_id = p_condominio_id;
+end;
+$$;
+
+grant execute on function public.condominio_rendiconto_quote(uuid) to authenticated;
+
+-- 3) Segnalazioni del condominio, senza testo --------------------
+-- La nota sintetica dell'art. 1130-bis conta le questioni pendenti:
+-- servono stato e priorità, non il titolo, che può descrivere un
+-- guasto dentro casa d'altri.
+create or replace function public.condominio_rendiconto_segnalazioni(p_condominio_id uuid)
+returns table (stato text, priorita text)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not (
+    admin_possiede_condominio(p_condominio_id) or appartiene_condominio(p_condominio_id)
+  ) then
+    raise exception 'Non autorizzato a leggere le segnalazioni di questo condominio.';
+  end if;
+
+  return query
+  select sg.stato, sg.priorita
+  from segnalazioni sg
+  where sg.condominio_id = p_condominio_id;
+end;
+$$;
+
+grant execute on function public.condominio_rendiconto_segnalazioni(uuid) to authenticated;
+
+-- 4) Tabella millesimale generale --------------------------------
+-- Le unità dell'edificio con i millesimi di proprietà: identificativo
+-- e piano, nessun nominativo.
+create or replace function public.condominio_unita_millesimi(p_condominio_id uuid)
+returns table (
+  unita_id uuid,
+  identificativo text,
+  piano text,
+  millesimi_proprieta numeric
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not (
+    admin_possiede_condominio(p_condominio_id) or appartiene_condominio(p_condominio_id)
+  ) then
+    raise exception 'Non autorizzato a leggere le unità di questo condominio.';
+  end if;
+
+  return query
+  select u.id, u.identificativo, u.piano, u.millesimi_proprieta
+  from unita u
+  where u.condominio_id = p_condominio_id
+  order by u.identificativo;
+end;
+$$;
+
+grant execute on function public.condominio_unita_millesimi(uuid) to authenticated;
+
+-- 5) Tabelle millesimali aggiuntive (ascensore, scale, ...) ------
+-- I NOMI delle tabelle sono già leggibili dal condòmino
+-- ("tabelle_millesimali_select"): qui servono solo i valori per unità.
+create or replace function public.condominio_valori_millesimali(p_condominio_id uuid)
+returns table (tabella_id uuid, unita_id uuid, valore numeric)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not (
+    admin_possiede_condominio(p_condominio_id) or appartiene_condominio(p_condominio_id)
+  ) then
+    raise exception 'Non autorizzato a leggere le tabelle millesimali di questo condominio.';
+  end if;
+
+  return query
+  select v.tabella_id, v.unita_id, v.valore
+  from valori_millesimali v
+  join tabelle_millesimali t on t.id = v.tabella_id
+  where t.condominio_id = p_condominio_id;
+end;
+$$;
+
+grant execute on function public.condominio_valori_millesimali(uuid) to authenticated;
+
+-- 6) Soggetti collegati a UNA unità ------------------------------
+-- Per lo stato patrimoniale della propria unità. "unita_proprietari"
+-- mostra al condòmino solo la propria riga e "anagrafiche" solo la
+-- propria anagrafica: un comproprietario otterrebbe un documento che
+-- dichiara il 50% e tace sull'altro. Il perimetro è la SINGOLA unità
+-- posseduta — possiede_unita(), non appartiene_condominio() — perché
+-- chi condivide un'unità ne condivide già la titolarità.
+create or replace function public.unita_soggetti(p_unita_id uuid)
+returns table (
+  nominativo text,
+  tipo_soggetto text,
+  quota_possesso numeric,
+  attivo boolean
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not (admin_gestisce_unita(p_unita_id) or possiede_unita(p_unita_id)) then
+    raise exception 'Non autorizzato a leggere i soggetti di questa unità.';
+  end if;
+
+  return query
+  select
+    coalesce(
+      a.nominativo,
+      nullif(trim(concat_ws(' ', ut.nome, ut.cognome)), ''),
+      'Soggetto non indicato'
+    ),
+    up.tipo_soggetto,
+    up.quota_possesso,
+    up.attivo
+  from unita_proprietari up
+  left join anagrafiche a on a.id = up.anagrafica_id
+  left join utenti ut on ut.id = up.utente_id
+  where up.unita_id = p_unita_id
+  order by up.created_at;
+end;
+$$;
+
+grant execute on function public.unita_soggetti(uuid) to authenticated;
