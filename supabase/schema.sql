@@ -3672,3 +3672,26 @@ revoke execute on function public.registra_tentativo_autenticazione(text, text, 
   from anon, authenticated;
 revoke execute on function public.azzera_tentativi_autenticazione(text, text)
   from anon, authenticated;
+
+
+-- ============================================================
+-- Migrazione: tracciamento della convocazione inviata (FEAT-04)
+-- Da applicare manualmente su Supabase (SQL Editor). Idempotente.
+--
+-- Prima di questa migrazione l'invio dell'email di convocazione era avvolto
+-- in un catch silenzioso: nessuno — né il sistema né l'amministratore —
+-- sapeva se la convocazione non fosse arrivata a un condòmino
+-- (docs/audit/03-feature-conformita.md, FEAT-04). Non si registra un log
+-- per destinatario (il rimedio nell'audit indica che basta un aggregato),
+-- solo l'ultimo invio: quando è avvenuto, a quanti destinatari era
+-- indirizzato e per quanti la richiesta di invio a Resend è andata a buon
+-- fine. "Consegnate" è impreciso di proposito nel nome breve: è il numero di
+-- email accettate per l'invio, non una conferma di recapito nella casella
+-- del destinatario (Resend non la fornisce in questo flusso) — il commento
+-- nel codice che aggiorna questi campi lo ripete.
+-- ============================================================
+
+alter table assemblee
+  add column if not exists convocazione_inviata_il timestamptz,
+  add column if not exists convocazione_email_destinatari int,
+  add column if not exists convocazione_email_consegnate int;

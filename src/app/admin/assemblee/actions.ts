@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
 import { messaggioErrore } from "@/lib/errori";
 import { inviaNotificaEmailMultipla } from "@/lib/notifiche-invio";
-import { formatDataOra } from "@/lib/format";
+import { costruisciEmailConvocazione } from "@/lib/convocazione-email";
 
 export type StatoForm = { errore?: string } | undefined;
 
@@ -41,6 +41,16 @@ export async function creaAssemblea(
 
 // Invio best-effort: se Resend fallisce (o non è ancora configurato) non deve
 // bloccare la creazione dell'assemblea, che a questo punto è già avvenuta.
+//
+// A questo punto del flusso luogo e ordine del giorno non esistono quasi
+// mai ancora (si aggiungono dopo, sulla pagina di dettaglio): il contenuto
+// resta minimo per onestà, non perché non si sia provato ad arricchirlo.
+// Quando l'amministratore completa quei dati può rimandare la convocazione
+// con il contenuto pieno da `inviaConvocazione`
+// (src/app/admin/assemblee/[id]/actions.ts), che aggiorna anche il
+// tracciamento dell'invio (FEAT-04) — questo primo invio automatico non lo
+// tocca di proposito: non deve sembrare "l'unica convocazione mai inviata"
+// se poi non ne arriva una seconda più completa.
 async function notificaNuovaAssemblea(condominioId: string, dataAssemblea: string, tipo: string) {
   try {
     const supabase = await createClient();
@@ -57,6 +67,8 @@ async function notificaNuovaAssemblea(condominioId: string, dataAssemblea: strin
       .select("utente_id, utente:utente_id(email)")
       .in("unita_id", unitaIds);
 
+    const { subject, html } = costruisciEmailConvocazione({ tipo, dataAssemblea });
+
     // L'invio passa dal cancello delle preferenze (`nuova_assemblea`): chi non
     // ha toccato le impostazioni riceve l'avviso come prima.
     await inviaNotificaEmailMultipla({
@@ -67,8 +79,8 @@ async function notificaNuovaAssemblea(condominioId: string, dataAssemblea: strin
           email: (p.utente as unknown as { email: string } | null)?.email ?? "",
         }))
         .filter((d) => d.utenteId && d.email),
-      subject: "Nuova assemblea convocata",
-      html: `<p>È stata convocata una nuova assemblea ${tipo} per il ${formatDataOra(dataAssemblea)}.</p><p>Accedi al portale per i dettagli.</p>`,
+      subject,
+      html,
     });
   } catch (errore) {
     // ignorato di proposito, vedi commento sopra — ma logghiamo perché

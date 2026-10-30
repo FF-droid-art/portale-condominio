@@ -27,6 +27,7 @@ import { PuntoOdgForm } from "./punto-form";
 import { LinkVideoconferenza } from "./link-videoconferenza";
 import { VerbaleUpload } from "./verbale-upload";
 import { DettagliAssemblea } from "./dettagli-assemblea";
+import { InviaConvocazione } from "./invia-convocazione";
 import { PresenzeCard, type RigaPresenza } from "./presenze-card";
 import { DocumentiAssemblea } from "./documenti-assemblea";
 import { FirmeVerbaleCard, type Firmatario } from "./firme-verbale-card";
@@ -42,7 +43,7 @@ export default async function AssembleaDettaglioPage({
   const { data: assemblea } = await supabase
     .from("assemblee")
     .select(
-      "id, data_assemblea, tipo, stato, condominio_id, convocazione, luogo, link_videoconferenza, verbale_url, condominio:condominio_id(nome)"
+      "id, data_assemblea, tipo, stato, condominio_id, convocazione, luogo, link_videoconferenza, verbale_url, convocazione_inviata_il, convocazione_email_destinatari, convocazione_email_consegnate, condominio:condominio_id(nome)"
     )
     .eq("id", id)
     .single();
@@ -229,6 +230,26 @@ export default async function AssembleaDettaglioPage({
             luogo={assemblea.luogo}
             convocazione={convocazione}
           />
+
+          <Card>
+            <CardHeader>
+              <CardHeaderText>
+                <CardTitle>Convocazione via email</CardTitle>
+                <CardDescription>
+                  Alla creazione è partita una notifica minima. Dopo aver impostato luogo e punti
+                  all&apos;ordine del giorno, rimandala per includerli.
+                </CardDescription>
+              </CardHeaderText>
+            </CardHeader>
+            <InviaConvocazione
+              assembleaId={assemblea.id}
+              ultimoInvio={{
+                inviataIl: assemblea.convocazione_inviata_il,
+                destinatari: assemblea.convocazione_email_destinatari,
+                consegnate: assemblea.convocazione_email_consegnate,
+              }}
+            />
+          </Card>
 
           <DocumentiAssemblea assembleaId={assemblea.id} />
 

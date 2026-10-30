@@ -10,6 +10,8 @@ import { generaPdf } from "@/lib/documenti/pdf";
 import { generaToken } from "@/lib/firma-otp";
 import { formatDataOra } from "@/lib/format";
 import { FAMIGLIE_PDF_E_IMMAGINI, testaDiFile, verificaTipoFile } from "@/lib/tipi-file";
+import { inviaNotificaEmailMultipla } from "@/lib/notifiche-invio";
+import { costruisciEmailConvocazione } from "@/lib/convocazione-email";
 import type { ModalitaPresenza, RuoloFirmatario } from "@/lib/types";
 import { costruisciDocumentoAssemblea } from "./documenti-dati";
 
@@ -233,6 +235,104 @@ export async function aggiornaDettagliAssemblea(
     .eq("id", assembleaId);
 
   if (error) return { errore: messaggioErrore(error, "admin/assemblee/aggiornaDettagliAssemblea") };
+  rivalidaAssemblea(assembleaId);
+}
+
+/**
+ * Rimanda la convocazione con il contenuto completo: luogo, link alla
+ * videoconferenza, ordine del giorno con tutti i punti inseriti finora
+ * (FEAT-04 in docs/audit/03-feature-conformita.md). A differenza
+ * dell'invio automatico alla creazione (sempre minimo, perché a quel punto
+ * questi dati di norma non esistono ancora — vedi il commento su
+ * `notificaNuovaAssemblea` in ../actions.ts), questa è un'azione esplicita
+ * dell'amministratore: un suo fallimento va mostrato, non inghiottito in
+ * un catch silenzioso come il primo invio.
+ *
+ * Aggiorna anche `convocazione_inviata_il`/`convocazione_email_*`
+ * sull'assemblea, così l'amministratore vede quando è stata rimandata e a
+ * quanti destinatari è arrivata — non una prova di consegna nella casella
+ * di ciascuno (Resend non la fornisce in questo flusso), solo che la
+ * richiesta di invio è andata a buon fine.
+ */
+export async function inviaConvocazione(
+  _stato: StatoForm,
+  formData: FormData
+): Promise<StatoForm> {
+  const assembleaId = String(formData.get("assemblea_id") ?? "");
+  if (!assembleaId) return { errore: "Assemblea non valida." };
+
+  await richiedeAmministratore();
+  const supabase = await createClient();
+
+  const { data: assemblea, error: erroreAssemblea } = await supabase
+    .from("assemblee")
+    .select("tipo, data_assemblea, luogo, link_videoconferenza, convocazione, condominio_id")
+    .eq("id", assembleaId)
+    .single();
+  if (erroreAssemblea || !assemblea) {
+    return { errore: messaggioErrore(erroreAssemblea ?? new Error("non trovata"), "admin/assemblee/inviaConvocazione") };
+  }
+
+  const [{ data: punti }, { data: unita }] = await Promise.all([
+    supabase
+      .from("punti_odg")
+      .select("numero_punto, descrizione")
+      .eq("assemblea_id", assembleaId)
+      .order("numero_punto"),
+    supabase.from("unita").select("id").eq("condominio_id", assemblea.condominio_id),
+  ]);
+
+  const unitaIds = (unita ?? []).map((u) => u.id);
+  const { data: proprietari } = unitaIds.length
+    ? await supabase
+        .from("unita_proprietari")
+        .select("utente_id, utente:utente_id(email)")
+        .in("unita_id", unitaIds)
+    : { data: [] as { utente_id: string | null; utente: { email: string } | null }[] };
+
+  const destinatari = (proprietari ?? [])
+    .map((p) => ({
+      utenteId: (p.utente_id as string | null) ?? "",
+      email: (p.utente as unknown as { email: string } | null)?.email ?? "",
+    }))
+    .filter((d) => d.utenteId && d.email);
+
+  const { subject, html } = costruisciEmailConvocazione({
+    tipo: assemblea.tipo,
+    dataAssemblea: assemblea.data_assemblea,
+    luogo: assemblea.luogo,
+    linkVideoconferenza: assemblea.link_videoconferenza,
+    convocazione: assemblea.convocazione as 1 | 2 | null,
+    puntiOdg: (punti ?? []).map((p) => ({ numeroPunto: p.numero_punto, descrizione: p.descrizione })),
+  });
+
+  let esito: { inviate: number; saltate: number };
+  try {
+    esito = await inviaNotificaEmailMultipla({
+      tipoEvento: "nuova_assemblea",
+      destinatari,
+      subject,
+      html,
+    });
+  } catch (erroreInvio) {
+    registraErrore("admin/assemblee/inviaConvocazione", erroreInvio);
+    return { errore: "Invio non riuscito. Riprova; se il problema persiste, contattaci." };
+  }
+
+  const { error: erroreTracciamento } = await supabase
+    .from("assemblee")
+    .update({
+      convocazione_inviata_il: new Date().toISOString(),
+      convocazione_email_destinatari: destinatari.length,
+      convocazione_email_consegnate: esito.inviate,
+    })
+    .eq("id", assembleaId);
+  if (erroreTracciamento) {
+    // L'email è comunque partita: non si blocca l'esito per un aggiornamento
+    // di sola contabilità interna, ma va comunque loggato (COD-09).
+    registraErrore("admin/assemblee/inviaConvocazione:tracciamento", erroreTracciamento);
+  }
+
   rivalidaAssemblea(assembleaId);
 }
 
