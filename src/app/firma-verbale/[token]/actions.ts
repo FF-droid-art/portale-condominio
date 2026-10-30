@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/service";
 import { resend, MITTENTE_EMAIL } from "@/lib/resend";
@@ -12,6 +13,8 @@ import {
   OTP_VALIDITA_MINUTI,
   type StatoFirma,
 } from "@/lib/firma-otp";
+import { estraiIp } from "@/lib/limite-tentativi";
+import { registraTentativo } from "@/lib/limite-tentativi-registra";
 
 /**
  * Azioni della pagina pubblica di conferma del verbale.
@@ -62,6 +65,20 @@ async function leggiFirma(token: string) {
 export async function richiediCodice(token: string): Promise<Esito> {
   if (!token) return { errore: "Collegamento non valido." };
 
+  // COD-05, primo livello: tetto per indirizzo IP, a prescindere dal token.
+  // Il throttle di 60s qui sotto vale per singola riga `firme_verbale`,
+  // quindi non limita chi gira fra token diversi: il costo degli invii
+  // (Resend) resterebbe senza tetto. La soglia è alta di proposito — vedi
+  // `LIMITI.richiesta_otp_firma_ip` — perché una connessione condivisa non
+  // la deve incontrare mai. Senza IP noto (sviluppo locale) il controllo si
+  // salta: una chiave unica per tutti gli IP ignoti bloccherebbe la firma
+  // per chiunque.
+  const ip = estraiIp(await headers());
+  if (ip) {
+    const limiteIp = await registraTentativo("richiesta_otp_firma_ip", [ip]);
+    if (limiteIp.bloccato) return { errore: limiteIp.messaggio };
+  }
+
   const { supabase, firma } = await leggiFirma(token);
   if (!firma) return { errore: "Collegamento non valido o non più attivo." };
   if (firma.confermato_il) return { errore: "Hai già confermato questo verbale." };
@@ -75,6 +92,16 @@ export async function richiediCodice(token: string): Promise<Esito> {
   ) {
     return { errore: "Un codice è appena stato inviato: controlla la posta e riprova tra un minuto." };
   }
+
+  // COD-05, secondo livello: quanti codici in tutto si possono far partire
+  // su questo link. Il contatore è qui e non in testa alla funzione di
+  // proposito: conta gli invii effettivi, non i clic — chi preme due volte
+  // e incontra il throttle di 60s non si consuma un invio. La chiave è
+  // token+IP: il token è già alta entropia, l'IP evita che un link
+  // legittimo esaurisca il proprio credito per colpa di terzi che lo
+  // provano.
+  const limiteInvii = await registraTentativo("richiesta_otp_firma", [token, ip]);
+  if (limiteInvii.bloccato) return { errore: limiteInvii.messaggio };
 
   const codice = generaCodiceOtp();
   const nomeCondominio = firma.assemblea.condominio?.nome ?? "condominio";
@@ -92,11 +119,13 @@ export async function richiediCodice(token: string): Promise<Esito> {
         `<p>È valido ${OTP_VALIDITA_MINUTI} minuti. Se non hai richiesto tu questo codice, ignora questo messaggio.</p>`,
     });
   } catch (e) {
-    return {
-      errore: `Invio del codice non riuscito (${
-        e instanceof Error ? e.message : "errore sconosciuto"
-      }).`,
-    };
+    // COD-02/COD-09: il dettaglio del provider di posta si logga, non si
+    // mostra a chi deve solo firmare un verbale.
+    console.error("[firma-verbale] invio del codice non riuscito", {
+      firmaId: firma.id,
+      errore: e instanceof Error ? e.message : e,
+    });
+    return { errore: "Invio del codice non riuscito: riprova tra qualche minuto." };
   }
 
   const { error } = await supabase
@@ -109,7 +138,13 @@ export async function richiediCodice(token: string): Promise<Esito> {
     })
     .eq("id", firma.id);
 
-  if (error) return { errore: error.message };
+  if (error) {
+    console.error("[firma-verbale] salvataggio del codice non riuscito", {
+      firmaId: firma.id,
+      errore: error.message,
+    });
+    return { errore: "Non è stato possibile registrare il codice: riprova." };
+  }
 
   revalidatePath(`/firma-verbale/${token}`);
   return { ok: true, messaggio: `Codice inviato a ${mascheraEmail(firma.email)}.` };
@@ -146,7 +181,16 @@ export async function confermaFirma(token: string, codiceDigitato: string): Prom
     })
     .eq("id", firma.id);
 
-  if (error) return { errore: error.message };
+  if (error) {
+    // Flusso critico (CLAUDE.md, punto 7): una conferma che non si scrive
+    // deve lasciare traccia, altrimenti nessuno saprà perché quel verbale
+    // risulta non firmato.
+    console.error("[firma-verbale] registrazione della conferma non riuscita", {
+      firmaId: firma.id,
+      errore: error.message,
+    });
+    return { errore: "Non è stato possibile registrare la conferma: riprova." };
+  }
 
   revalidatePath(`/firma-verbale/${token}`);
   return { ok: true };

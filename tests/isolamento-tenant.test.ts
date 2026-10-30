@@ -231,6 +231,103 @@ describe.skipIf(!CONFIGURATO)("isolamento tenant (progetto Supabase di test)", (
     expect(data).toEqual([]);
   });
 
+  // COD-05: il contatore dei tentativi di autenticazione. Non è una
+  // tabella multi-tenant (non ha un condominio_id), ma è una tabella che
+  // nessun utente del portale deve poter leggere né scrivere: chi potesse
+  // azzerarla aggirerebbe il rate limiter sul proprio login, chi potesse
+  // leggerla saprebbe quali impronte hanno tentato di accedere. La RLS è
+  // attiva senza nessuna policy e le funzioni sono concesse solo a
+  // service_role: è esattamente quello che questo caso verifica, invece di
+  // darlo per buono leggendo la migrazione.
+  test("COD-05: il contatore dei tentativi non è leggibile, scrivibile né azzerabile da un utente", async () => {
+    const chiave = `isolamento-${suffisso}`;
+
+    // 1) Controllo positivo con la service role: la funzione esiste, conta
+    //    e blocca. Se questo fallisce, la migrazione non è stata applicata
+    //    sul progetto di test e i controlli negativi sotto passerebbero
+    //    solo perché non c'è niente da proteggere.
+    const registra = (massimo: number) =>
+      service.rpc("registra_tentativo_autenticazione", {
+        p_azione: "login",
+        p_chiave: chiave,
+        p_finestra_minuti: 10,
+        p_massimo: massimo,
+      });
+
+    const { data: primo, error: errorePrimo } = await registra(2);
+    expect(
+      errorePrimo,
+      "registra_tentativo_autenticazione non disponibile: applica la migrazione COD-05 di supabase/schema.sql sul progetto di test."
+    ).toBeNull();
+    expect(primo?.[0]?.bloccato).toBe(false);
+    expect(primo?.[0]?.tentativi).toBe(1);
+
+    const { data: secondo } = await registra(2);
+    expect(secondo?.[0]?.bloccato).toBe(true);
+    expect(secondo?.[0]?.tentativi).toBe(2);
+
+    // Un terzo tentativo a blocco già attivo non si registra: il blocco non
+    // si autoalimenta e la tabella non cresce a ogni clic.
+    const { data: terzo } = await registra(2);
+    expect(terzo?.[0]?.bloccato).toBe(true);
+    expect(terzo?.[0]?.tentativi).toBe(2);
+
+    // 2) Un condòmino autenticato non legge nulla e non scrive nulla.
+    const { data: letti, error: erroreLettura } = await clienteCondominoA
+      .from("tentativi_autenticazione")
+      .select("id, azione, chiave");
+    // Con RLS attiva e nessuna policy la select non è un errore: è vuota.
+    expect(erroreLettura ? [] : (letti ?? [])).toEqual([]);
+
+    const { error: erroreInserimento } = await clienteCondominoA
+      .from("tentativi_autenticazione")
+      .insert({ azione: "login", chiave });
+    expect(erroreInserimento).not.toBeNull();
+
+    // 3) Le funzioni non sono eseguibili da un utente qualunque, né da chi
+    //    non è autenticato: altrimenti basterebbe conoscere la chiave per
+    //    azzerare i propri tentativi.
+    const { error: erroreAzzeraUtente } = await clienteCondominoA.rpc(
+      "azzera_tentativi_autenticazione",
+      { p_azione: "login", p_chiave: chiave }
+    );
+    expect(erroreAzzeraUtente).not.toBeNull();
+
+    const { error: erroreRegistraUtente } = await clienteCondominoA.rpc(
+      "registra_tentativo_autenticazione",
+      { p_azione: "login", p_chiave: chiave, p_finestra_minuti: 10, p_massimo: 2 }
+    );
+    expect(erroreRegistraUtente).not.toBeNull();
+
+    const anonimo = createClient(URL_TEST!, ANON_TEST!, { auth: { persistSession: false } });
+    const { error: erroreAnonimo } = await anonimo.rpc("azzera_tentativi_autenticazione", {
+      p_azione: "login",
+      p_chiave: chiave,
+    });
+    expect(erroreAnonimo).not.toBeNull();
+
+    // 4) Il blocco è ancora in piedi: nessuno dei tentativi sopra l'ha
+    //    sciolto. Poi si azzera con la service role, come fa il login dopo
+    //    un accesso riuscito, e si verifica che riparta da uno.
+    const { data: dopoTentativi } = await registra(2);
+    expect(dopoTentativi?.[0]?.bloccato).toBe(true);
+
+    const { error: erroreAzzera } = await service.rpc("azzera_tentativi_autenticazione", {
+      p_azione: "login",
+      p_chiave: chiave,
+    });
+    expect(erroreAzzera).toBeNull();
+
+    const { data: dopoAzzeramento } = await registra(2);
+    expect(dopoAzzeramento?.[0]?.bloccato).toBe(false);
+    expect(dopoAzzeramento?.[0]?.tentativi).toBe(1);
+
+    await service.rpc("azzera_tentativi_autenticazione", {
+      p_azione: "login",
+      p_chiave: chiave,
+    });
+  });
+
   // FEAT-02/FEAT-03: le funzioni security definer dietro al rendiconto e
   // allo stato patrimoniale del condòmino. A differenza delle select dirette
   // sopra, qui un accesso non autorizzato non restituisce "zero righe": la

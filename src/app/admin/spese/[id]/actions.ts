@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { inviaNotifichePersonalizzate } from "@/lib/notifiche-invio";
 import { formatValuta } from "@/lib/format";
+import { FAMIGLIE_PDF_E_IMMAGINI, testaDiFile, verificaTipoFile } from "@/lib/tipi-file";
 
 export type StatoForm = { errore?: string } | undefined;
 
@@ -172,15 +173,25 @@ export async function caricaDocumentoSpesa(
     return { errore: "Il file supera i 4MB consentiti." };
   }
 
+  // COD-06: una fattura è un PDF o la foto di un documento cartaceo. Il
+  // formato si verifica sui primi byte, non su `file.type`.
+  const tipo = verificaTipoFile(await testaDiFile(file), file.name, FAMIGLIE_PDF_E_IMMAGINI);
+  if (!tipo.ok) return { errore: tipo.errore };
+
   const supabase = await createClient();
-  const estensione = file.name.split(".").pop() ?? "pdf";
-  const percorso = `spese/${spesaId}/${Date.now()}.${estensione}`;
+  const percorso = `spese/${spesaId}/${Date.now()}.${tipo.estensione}`;
 
   const { error: erroreUpload } = await supabase.storage
     .from("documenti-condominio")
-    .upload(percorso, file, { contentType: file.type || undefined });
+    .upload(percorso, file, { contentType: tipo.mime });
 
-  if (erroreUpload) return { errore: erroreUpload.message };
+  if (erroreUpload) {
+    console.error("[spese] caricamento del documento di spesa non riuscito", {
+      spesaId,
+      errore: erroreUpload.message,
+    });
+    return { errore: "Caricamento del file non riuscito: riprova." };
+  }
 
   const { error } = await supabase
     .from("spese")

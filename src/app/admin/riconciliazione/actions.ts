@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
-import { MAX_MOVIMENTI, parseEstrattoContoCsv } from "@/lib/riconciliazione";
+import { MAX_CARATTERI_CSV, MAX_MOVIMENTI, parseEstrattoContoCsv } from "@/lib/riconciliazione";
 
 export type StatoForm = { errore?: string } | undefined;
 
@@ -44,6 +44,13 @@ export async function importaEstrattoConto(
 ): Promise<EsitoImportEstratto> {
   if (!condominioId) return { errore: "Seleziona il condominio." };
   if (!testo.trim()) return { errore: "Il file è vuoto." };
+  // COD-06: il limite di dimensione che il client applica al file non è una
+  // garanzia, perché questa action è chiamabile anche senza passare dal suo
+  // modulo. Qui non c'è un tipo MIME da verificare — arriva testo, e la
+  // struttura la valida `parseEstrattoContoCsv` — ma la dimensione sì.
+  if (testo.length > MAX_CARATTERI_CSV) {
+    return { errore: "Il file è troppo grande: esporta un periodo più breve." };
+  }
 
   await richiedeAmministratore();
 

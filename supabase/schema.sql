@@ -3471,3 +3471,179 @@ end;
 $$;
 
 grant execute on function public.unita_soggetti(uuid) to authenticated;
+
+-- ============================================================
+-- Migrazione: limite ai tentativi di autenticazione (COD-05)
+-- Da applicare manualmente su Supabase (SQL Editor). Idempotente.
+--
+-- Login, recupero password e richiesta del codice di conferma del
+-- verbale non avevano alcun limite applicativo: si contava sui limiti
+-- di piattaforma di Supabase, che da questo repo non sono né
+-- verificabili né configurabili. Il contatore sta qui, nel database che
+-- il progetto usa già, e non su un servizio esterno (Redis, Upstash):
+-- è un'infrastruttura in meno da avere, non un'ottimizzazione.
+--
+-- Scelte che spiegano la forma della tabella:
+--
+--  1) NIENTE DATI PERSONALI. La colonna `chiave` non contiene email né
+--     indirizzi IP ma la loro impronta SHA-256, calcolata in
+--     `src/lib/limite-tentativi.ts`. Un elenco di email che hanno
+--     sbagliato la password sarebbe un dato personale senza alcuna
+--     ragione di esistere (minimizzazione, art. 5 GDPR), e per contare
+--     i tentativi l'impronta basta.
+--
+--  2) FINESTRA SCORREVOLE, NIENTE LOCKOUT. Non esiste una colonna
+--     "bloccato fino a": ci sono solo i tentativi con il loro istante,
+--     e il blocco è la conseguenza di quanti ne restano dentro la
+--     finestra. Quando il più vecchio esce, si torna a poterne fare
+--     uno — senza che nessuno debba sbloccare nulla a mano, che su un
+--     portale condominiale senza help desk conta più della severità.
+--
+--  3) UNA FUNZIONE E NON TRE QUERY. "Conta i tentativi, poi scrivine
+--     uno" non è atomico: due richieste simultanee leggerebbero lo
+--     stesso contatore e passerebbero entrambe.
+--     `registra_tentativo_autenticazione` fa pulizia, conteggio e
+--     inserimento in una sola transazione, serializzata per chiave da
+--     un advisory lock, e in un solo giro di rete.
+--
+--  4) NESSUNA POLICY, DI PROPOSITO. La RLS è attiva e la tabella non ha
+--     policy: `anon` e `authenticated` non la raggiungono in nessun
+--     modo, e anche le due funzioni sono eseguibili solo da
+--     `service_role`. È l'unico modo corretto per un contatore che deve
+--     funzionare proprio dove una sessione utente non esiste ancora
+--     (login, recupero password, pagina pubblica di firma), e impedisce
+--     la cosa peggiore che un utente potrebbe fare con questa tabella:
+--     azzerare i propri tentativi, o contare quelli di altri.
+--
+--  5) PULIZIA SENZA CRON. Il progetto non ha uno scheduler. Ogni
+--     chiamata cancella i tentativi scaduti della propria chiave
+--     (quindi nessuna chiave attiva cresce), e una chiamata su
+--     cinquanta cancella tutto ciò che è più vecchio di un giorno
+--     (quindi nemmeno le chiavi mai più riviste restano in giro). La
+--     tabella non ha bisogno di altra manutenzione.
+-- ============================================================
+
+create table if not exists tentativi_autenticazione (
+  id uuid primary key default gen_random_uuid(),
+  -- quale azione si stava tentando ('login', 'recupero_password',
+  -- 'richiesta_otp_firma', 'richiesta_otp_firma_ip'). Nessun check e
+  -- nessun enum: l'elenco sta in src/lib/limite-tentativi.ts, e
+  -- proteggere una nuova azione deve restare una modifica di codice,
+  -- non una migrazione del database.
+  azione text not null,
+  -- impronta SHA-256 di azione + email normalizzata + IP. Mai il dato
+  -- in chiaro: vedi il punto 1 qui sopra.
+  chiave text not null,
+  avvenuto_il timestamptz not null default now()
+);
+
+-- Questo indice serve a entrambe le query della funzione: conteggio
+-- nella finestra e cancellazione degli scaduti della stessa chiave.
+create index if not exists idx_tentativi_autenticazione_chiave
+  on tentativi_autenticazione(azione, chiave, avvenuto_il desc);
+
+-- Il secondo serve solo alla pulizia globale periodica, che filtra per
+-- data senza conoscere la chiave.
+create index if not exists idx_tentativi_autenticazione_avvenuto
+  on tentativi_autenticazione(avvenuto_il);
+
+alter table tentativi_autenticazione enable row level security;
+
+-- Nessuna policy (punto 4): con la RLS attiva e zero policy la tabella
+-- è inaccessibile a tutti tranne che a service_role, che la bypassa. La
+-- revoca esplicita dei privilegi è difesa in profondità, per il caso in
+-- cui una policy venisse aggiunta per errore in futuro.
+revoke all on table tentativi_autenticazione from anon, authenticated;
+
+-- Registra un tentativo e dice se va bloccato.
+--
+-- Restituisce `bloccato` (il chiamante deve rifiutare), `tentativi`
+-- (quanti ce ne sono nella finestra, per il log) e `riprova_dal`
+-- (quando il più vecchio esce dalla finestra, cioè quando si torna a
+-- poterne fare uno: serve a dire all'utente quanti minuti aspettare).
+--
+-- Quando la soglia è già raggiunta il tentativo NON viene registrato:
+-- altrimenti chi insiste prolungherebbe il proprio blocco senza fine, e
+-- la tabella crescerebbe a ogni clic.
+create or replace function public.registra_tentativo_autenticazione(
+  p_azione text,
+  p_chiave text,
+  p_finestra_minuti int,
+  p_massimo int
+)
+returns table (bloccato boolean, tentativi int, riprova_dal timestamptz)
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_finestra interval := make_interval(mins => greatest(p_finestra_minuti, 1));
+  v_conta int;
+  v_primo timestamptz;
+begin
+  -- Serializza i controlli sulla stessa chiave. Senza questo lock due
+  -- richieste simultanee leggerebbero lo stesso stato e passerebbero
+  -- entrambe: è il difetto classico di un contatore "leggi poi scrivi".
+  perform pg_advisory_xact_lock(hashtextextended(p_azione || ':' || p_chiave, 0::int8));
+
+  -- Tentativi usciti dalla finestra: non contano più e non servono più.
+  delete from tentativi_autenticazione
+  where azione = p_azione
+    and chiave = p_chiave
+    and avvenuto_il < now() - v_finestra;
+
+  -- Pulizia globale opportunistica (punto 5): una volta su cinquanta, e
+  -- su un indice per data, quindi il costo medio per chiamata è
+  -- trascurabile.
+  if random() < 0.02 then
+    delete from tentativi_autenticazione where avvenuto_il < now() - interval '1 day';
+  end if;
+
+  select count(*), min(avvenuto_il)
+    into v_conta, v_primo
+  from tentativi_autenticazione
+  where azione = p_azione and chiave = p_chiave;
+
+  if v_conta >= p_massimo then
+    return query select true, v_conta, v_primo + v_finestra;
+    return;
+  end if;
+
+  insert into tentativi_autenticazione (azione, chiave) values (p_azione, p_chiave);
+  v_conta := v_conta + 1;
+  if v_primo is null then
+    v_primo := now();
+  end if;
+
+  return query select v_conta >= p_massimo, v_conta, v_primo + v_finestra;
+end;
+$$;
+
+-- Azzera il contatore di una chiave: si chiama dopo un accesso riuscito,
+-- così chi ricorda la password al quarto tentativo non resta a un
+-- tentativo dal blocco per i dieci minuti successivi.
+create or replace function public.azzera_tentativi_autenticazione(
+  p_azione text,
+  p_chiave text
+)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+begin
+  delete from tentativi_autenticazione
+  where azione = p_azione and chiave = p_chiave;
+end;
+$$;
+
+-- Le funzioni sono security definer: il grant va dato a mano e SOLO a
+-- service_role. Un grant a `authenticated` permetterebbe a un utente
+-- qualunque di azzerare i tentativi di chiunque (basterebbe conoscere
+-- la chiave) o di gonfiare la tabella a piacere.
+revoke all on function public.registra_tentativo_autenticazione(text, text, int, int) from public;
+revoke all on function public.azzera_tentativi_autenticazione(text, text) from public;
+grant execute on function public.registra_tentativo_autenticazione(text, text, int, int) to service_role;
+grant execute on function public.azzera_tentativi_autenticazione(text, text) to service_role;

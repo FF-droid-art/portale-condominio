@@ -9,6 +9,7 @@ import {
   FOTO_MAX_BYTES,
   PRIORITA_SEGNALAZIONE,
 } from "@/lib/segnalazioni";
+import { FAMIGLIE_IMMAGINE, testaDiFile, verificaTipoFile } from "@/lib/tipi-file";
 import type { CategoriaSegnalazione, PrioritaSegnalazione } from "@/lib/types";
 
 export type StatoForm = { errore?: string } | undefined;
@@ -64,6 +65,17 @@ export async function creaSegnalazione(
     return { errore: "La foto supera i 4 MB consentiti." };
   }
 
+  // COD-06: qui carica un condòmino, non l'amministratore, ed è il punto di
+  // upload con la platea più larga del portale. Il formato si verifica sui
+  // primi byte (sono ammesse solo immagini) e il controllo viene prima di
+  // creare la riga, per non dover disfare niente se il file non va bene.
+  let tipoFoto: { mime: string; estensione: string } | null = null;
+  if (haFoto) {
+    const esito = verificaTipoFile(await testaDiFile(foto), foto.name, FAMIGLIE_IMMAGINE);
+    if (!esito.ok) return { errore: esito.errore };
+    tipoFoto = { mime: esito.mime, estensione: esito.estensione };
+  }
+
   const utente = await richiedeUtente();
   const supabase = await createClient();
 
@@ -82,20 +94,29 @@ export async function creaSegnalazione(
     .single();
 
   if (error || !segnalazione) {
-    return { errore: error?.message ?? "Impossibile aprire la segnalazione." };
+    if (error) {
+      console.error("[segnalazioni] apertura non riuscita", {
+        condominioId,
+        errore: error.message,
+      });
+    }
+    return { errore: "Impossibile aprire la segnalazione: riprova." };
   }
 
-  if (haFoto) {
-    const estensione = foto.name.split(".").pop()?.toLowerCase() ?? "jpg";
-    const percorso = `segnalazioni/${segnalazione.id}/${Date.now()}.${estensione}`;
+  if (haFoto && tipoFoto) {
+    const percorso = `segnalazioni/${segnalazione.id}/${Date.now()}.${tipoFoto.estensione}`;
 
     const { error: erroreUpload } = await supabase.storage
       .from("documenti-condominio")
-      .upload(percorso, foto, { contentType: foto.type || undefined });
+      .upload(percorso, foto, { contentType: tipoFoto.mime });
 
     if (erroreUpload) {
       await supabase.from("segnalazioni").delete().eq("id", segnalazione.id);
-      return { errore: `Foto non caricata (${erroreUpload.message}). Riprova.` };
+      console.error("[segnalazioni] caricamento della foto non riuscito", {
+        segnalazioneId: segnalazione.id,
+        errore: erroreUpload.message,
+      });
+      return { errore: "La foto non è stata caricata: riprova." };
     }
 
     const { error: erroreAggiornamento } = await supabase
@@ -106,7 +127,11 @@ export async function creaSegnalazione(
     if (erroreAggiornamento) {
       await supabase.storage.from("documenti-condominio").remove([percorso]);
       await supabase.from("segnalazioni").delete().eq("id", segnalazione.id);
-      return { errore: erroreAggiornamento.message };
+      console.error("[segnalazioni] collegamento della foto non riuscito", {
+        segnalazioneId: segnalazione.id,
+        errore: erroreAggiornamento.message,
+      });
+      return { errore: "La segnalazione non è stata salvata: riprova." };
     }
   }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
 import { CATEGORIE_DOCUMENTO, DOCUMENTO_MAX_BYTES } from "@/lib/archivio";
+import { FAMIGLIE_ARCHIVIO, testaDiFile, verificaTipoFile } from "@/lib/tipi-file";
 import type { CategoriaDocumento } from "@/lib/types";
 
 export type StatoForm = { errore?: string } | undefined;
@@ -13,14 +14,20 @@ function rivalida() {
   revalidatePath("/area-riservata/documenti");
 }
 
-/** Sanifica il nome per il percorso nello storage, tenendo l'estensione. */
-function nomeSicuro(nomeFile: string): string {
-  const normalizzato = nomeFile
+/**
+ * Sanifica il nome per il percorso nello storage. L'estensione non è quella
+ * del nome caricato ma quella del formato riconosciuto dai primi byte
+ * (COD-06): un PNG rinominato "foto.html" non deve finire nello storage con
+ * un percorso che termina in .html.
+ */
+function nomeSicuro(nomeFile: string, estensione: string): string {
+  const senzaEstensione = nomeFile.replace(/\.[^.]*$/, "");
+  const normalizzato = senzaEstensione
     .normalize("NFD")
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
-  return normalizzato || "documento";
+  return `${normalizzato || "documento"}.${estensione}`;
 }
 
 /**
@@ -50,6 +57,11 @@ export async function caricaDocumento(
     return { errore: "Il file supera i 10 MB consentiti." };
   }
 
+  // COD-06: il tipo si decide dai primi byte del file, non da `file.type`,
+  // che è dichiarato dal browser e quindi scelto da chi carica.
+  const tipo = verificaTipoFile(await testaDiFile(file), file.name, FAMIGLIE_ARCHIVIO);
+  if (!tipo.ok) return { errore: tipo.errore };
+
   const categoria: CategoriaDocumento = (CATEGORIE_DOCUMENTO as string[]).includes(
     categoriaRichiesta
   )
@@ -59,13 +71,22 @@ export async function caricaDocumento(
   const amministratore = await richiedeAmministratore();
   const supabase = await createClient();
 
-  const percorso = `condomini/${condominioId}/${Date.now()}-${nomeSicuro(file.name)}`;
+  const percorso = `condomini/${condominioId}/${Date.now()}-${nomeSicuro(
+    file.name,
+    tipo.estensione
+  )}`;
 
   const { error: erroreUpload } = await supabase.storage
     .from("documenti-condominio")
-    .upload(percorso, file, { contentType: file.type || undefined });
+    .upload(percorso, file, { contentType: tipo.mime });
 
-  if (erroreUpload) return { errore: erroreUpload.message };
+  if (erroreUpload) {
+    console.error("[archivio] caricamento del documento non riuscito", {
+      condominioId,
+      errore: erroreUpload.message,
+    });
+    return { errore: "Caricamento del file non riuscito: riprova." };
+  }
 
   const { error } = await supabase.from("documenti_condominio").insert({
     condominio_id: condominioId,
@@ -75,13 +96,18 @@ export async function caricaDocumento(
     percorso,
     nome_file: file.name,
     dimensione_byte: file.size,
-    mime_type: file.type || null,
+    // Il MIME riconosciuto, non quello dichiarato dal client.
+    mime_type: tipo.mime,
     caricato_da: amministratore.id,
   });
 
   if (error) {
     await supabase.storage.from("documenti-condominio").remove([percorso]);
-    return { errore: error.message };
+    console.error("[archivio] registrazione del documento non riuscita", {
+      condominioId,
+      errore: error.message,
+    });
+    return { errore: "Il documento non è stato registrato in archivio: riprova." };
   }
 
   rivalida();

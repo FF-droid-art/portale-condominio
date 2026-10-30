@@ -8,6 +8,7 @@ import { resend, MITTENTE_EMAIL } from "@/lib/resend";
 import { generaPdf } from "@/lib/documenti/pdf";
 import { generaToken } from "@/lib/firma-otp";
 import { formatDataOra } from "@/lib/format";
+import { FAMIGLIE_PDF_E_IMMAGINI, testaDiFile, verificaTipoFile } from "@/lib/tipi-file";
 import type { ModalitaPresenza, RuoloFirmatario } from "@/lib/types";
 import { costruisciDocumentoAssemblea } from "./documenti-dati";
 
@@ -149,15 +150,25 @@ export async function caricaVerbale(
     return { errore: "Il file supera i 4MB consentiti." };
   }
 
+  // COD-06: tipo e estensione vengono dai primi byte del file, non dal nome
+  // né da `file.type`, che li dichiara il browser.
+  const tipo = verificaTipoFile(await testaDiFile(file), file.name, FAMIGLIE_PDF_E_IMMAGINI);
+  if (!tipo.ok) return { errore: tipo.errore };
+
   const supabase = await createClient();
-  const estensione = file.name.split(".").pop() ?? "pdf";
-  const percorso = `assemblee/${assembleaId}/${Date.now()}.${estensione}`;
+  const percorso = `assemblee/${assembleaId}/${Date.now()}.${tipo.estensione}`;
 
   const { error: erroreUpload } = await supabase.storage
     .from("documenti-condominio")
-    .upload(percorso, file, { contentType: file.type || undefined });
+    .upload(percorso, file, { contentType: tipo.mime });
 
-  if (erroreUpload) return { errore: erroreUpload.message };
+  if (erroreUpload) {
+    console.error("[assemblee] caricamento del verbale non riuscito", {
+      assembleaId,
+      errore: erroreUpload.message,
+    });
+    return { errore: "Caricamento del file non riuscito: riprova." };
+  }
 
   const { error } = await supabase
     .from("assemblee")

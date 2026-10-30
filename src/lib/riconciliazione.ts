@@ -237,6 +237,17 @@ export function impronta(
 /** Numero massimo di righe accettate in un colpo solo. */
 export const MAX_MOVIMENTI = 5000;
 
+/**
+ * Lunghezza massima del testo CSV accettata dal server.
+ *
+ * L'estratto conto non arriva come file ma come testo già letto dal browser
+ * (vedi `carica-estratto.tsx`), e il limite di 2 MB che il client applica al
+ * file è aggirabile da chiunque chiami la server action direttamente: il
+ * tetto va quindi ripetuto lato server. Sta qui e non nell'action perché è
+ * un parametro della lettura, come `MAX_MOVIMENTI`.
+ */
+export const MAX_CARATTERI_CSV = 2 * 1024 * 1024;
+
 export function parseEstrattoContoCsv(testo: string): EsitoLettura {
   const vuoto: EsitoLettura = {
     movimenti: [],
