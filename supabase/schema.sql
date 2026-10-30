@@ -3647,3 +3647,28 @@ revoke all on function public.registra_tentativo_autenticazione(text, text, int,
 revoke all on function public.azzera_tentativi_autenticazione(text, text) from public;
 grant execute on function public.registra_tentativo_autenticazione(text, text, int, int) to service_role;
 grant execute on function public.azzera_tentativi_autenticazione(text, text) to service_role;
+
+
+-- ============================================================
+-- Correzione: "revoke ... from public" non basta su Supabase (COD-05)
+-- Da applicare manualmente su Supabase (SQL Editor). Idempotente.
+--
+-- La migrazione precedente revocava l'esecuzione delle due funzioni del
+-- rate limiter "from public", assumendo che bastasse a escludere anon e
+-- authenticated. Non basta: su Supabase lo schema "public" ha privilegi
+-- di default che concedono EXECUTE su ogni nuova funzione proprio ad
+-- anon e authenticated (è il meccanismo con cui normalmente si vogliono
+-- esporre le funzioni come RPC senza un grant esplicito). Quel grant di
+-- default non passa da PUBLIC: è assegnato ai due ruoli direttamente, e
+-- "revoke ... from public" non lo tocca.
+--
+-- Conseguenza verificata con un test reale (tests/isolamento-tenant.test.ts):
+-- un condòmino autenticato poteva chiamare azzera_tentativi_autenticazione
+-- e azzerare il contatore di chiunque, vanificando il limite. Qui si
+-- revoca esplicitamente da anon e authenticated, non solo da public.
+-- ============================================================
+
+revoke execute on function public.registra_tentativo_autenticazione(text, text, int, int)
+  from anon, authenticated;
+revoke execute on function public.azzera_tentativi_autenticazione(text, text)
+  from anon, authenticated;
