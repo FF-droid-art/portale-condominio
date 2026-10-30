@@ -13,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { percorso: "/recupera-password", priorita: 0.1, frequenza: "yearly" as const },
     { percorso: "/privacy", priorita: 0.2, frequenza: "yearly" as const },
     { percorso: "/cookie", priorita: 0.2, frequenza: "yearly" as const },
+    { percorso: "/termini", priorita: 0.2, frequenza: "yearly" as const },
   ];
 
   return pagine.map((p) => ({

@@ -251,6 +251,9 @@ export default async function Home() {
               <Link href="/cookie" className="rounded text-muted-foreground hover:text-foreground">
                 Cookie
               </Link>
+              <Link href="/termini" className="rounded text-muted-foreground hover:text-foreground">
+                Termini e condizioni
+              </Link>
             </nav>
           </div>
           <p className="border-t border-border pt-6 text-sm text-muted-foreground">

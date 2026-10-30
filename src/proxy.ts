@@ -18,6 +18,7 @@ const ROUTE_ACCESSIBILI_SENZA_LOGIN = [
   "/reimposta-password",
   "/privacy",
   "/cookie",
+  "/termini",
   ...ROUTE_PUBBLICHE,
 ];
 

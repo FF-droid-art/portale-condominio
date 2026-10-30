@@ -99,6 +99,9 @@ export function AuthShell({
           <Link href="/cookie" className="rounded hover:text-white/80">
             Cookie
           </Link>
+          <Link href="/termini" className="rounded hover:text-white/80">
+            Termini
+          </Link>
         </nav>
       </footer>
     </div>
