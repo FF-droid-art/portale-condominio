@@ -1,15 +1,21 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { MailCheck } from "lucide-react";
 import { richiediReset } from "./actions";
 import { AuthShell, AuthLink } from "@/components/auth-shell";
 import { Field, Input } from "@/components/ui/input";
 import { FormError } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 
 export default function RecuperaPasswordPage() {
   const [stato, action, pending] = useActionState(richiediReset, undefined);
+  // La protezione captcha di Supabase, una volta attiva sul progetto, non
+  // si limita alla registrazione: copre anche il recupero password. Senza
+  // il widget qui, ogni richiesta falliva con "no captcha_token found".
+  const captchaConfigurato = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
+  const [captchaPronto, setCaptchaPronto] = useState(!captchaConfigurato);
 
   if (stato?.successo) {
     return (
@@ -59,9 +65,18 @@ export default function RecuperaPasswordPage() {
           />
         </Field>
 
+        <TurnstileWidget onChange={setCaptchaPronto} />
+
         <FormError>{stato?.errore}</FormError>
 
-        <Button type="submit" pending={pending} full size="lg" className="mt-1">
+        <Button
+          type="submit"
+          pending={pending}
+          disabled={!captchaPronto}
+          full
+          size="lg"
+          className="mt-1"
+        >
           {pending ? "Invio in corso…" : "Invia il link"}
         </Button>
       </form>

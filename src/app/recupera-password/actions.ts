@@ -14,6 +14,12 @@ export async function richiediReset(
   const email = String(formData.get("email") ?? "").trim();
   if (!email) return { errore: "Inserisci la tua email." };
 
+  // Vedi src/components/turnstile-widget.tsx: il widget inietta questo
+  // campo nel form quando la verifica va a buon fine. La protezione
+  // captcha di Supabase, una volta attiva sul progetto, la richiede anche
+  // qui, non solo in registrazione.
+  const captchaToken = String(formData.get("cf-turnstile-response") ?? "");
+
   const headersList = await headers();
 
   // COD-05: ogni richiesta qui fa partire una email verso un indirizzo che
@@ -32,6 +38,7 @@ export async function richiediReset(
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origine}/reimposta-password`,
+    captchaToken: captchaToken || undefined,
   });
 
   // L'esito è sempre lo stesso, qualunque cosa risponda Supabase: un errore
