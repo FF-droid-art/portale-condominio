@@ -1,6 +1,14 @@
+import type { Metadata } from "next";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
+
+// SITO-02: seconda barriera oltre al redirect del proxy per chi non ha
+// sessione — un crawler che arrivasse comunque su un URL sotto /admin non
+// deve indicizzarlo né seguirne i link.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function AdminLayout({
   children,

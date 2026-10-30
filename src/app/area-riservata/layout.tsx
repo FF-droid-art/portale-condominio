@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import { richiedeUtente } from "@/lib/supabase/dal";
 import { AppShell } from "@/components/app-shell";
 import { ImpersonazioneBanner } from "./impersonazione-banner";
+
+// SITO-02: vedi la stessa nota in src/app/admin/layout.tsx.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function AreaRiservataLayout({
   children,

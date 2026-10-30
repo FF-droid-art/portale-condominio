@@ -23,6 +23,24 @@ export default async function Home() {
 
   return (
     <div className="flex flex-1 flex-col">
+      {/* SITO-03: dato strutturato schema.org, così un motore di ricerca
+          capisce di cosa si tratta senza doverlo indovinare dal testo.
+          Children testuale (non dangerouslySetInnerHTML): React scrive il
+          contenuto come textContent del tag, in sicurezza, e qui il JSON è
+          comunque statico — nessun dato proveniente dall'utente. */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "Portale Condominio",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "Web",
+          description:
+            "Gestione condominiale online: spese e ripartizioni, unità immobiliari, assemblee e votazioni telematiche.",
+          offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
+        })}
+      </script>
+
       {/* ---------------------------------------------------------------
           Apertura scura: intestazione e hero condividono lo stesso blocco
           navy, così il passaggio al contenuto chiaro segna con chiarezza
