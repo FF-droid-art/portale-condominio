@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { messaggioErroreAuth } from "@/lib/errori";
 import type { Ruolo } from "@/lib/types";
@@ -33,6 +34,16 @@ export async function registrati(
 
   const supabase = await createClient();
 
+  // Senza emailRedirectTo, il link di conferma nell'email usa il "Site URL"
+  // configurato su Supabase — oggi il dominio di produzione — qualunque sia
+  // il branch/preview da cui ci si è registrati. Su un progetto con un solo
+  // Supabase ma più deploy Vercel (produzione + branch di anteprima come
+  // questo), questo mandava chi si registrava dalla preview a finire sulla
+  // build di main dopo aver confermato l'email. Calcolare l'origine dalla
+  // richiesta vera, come già fa recupera-password/actions.ts, lo risolve.
+  const headersList = await headers();
+  const origine = headersList.get("origin") ?? `https://${headersList.get("host")}`;
+
   // Chi si registra come amministratore parte con un'area isolata e senza
   // alcun condominio assegnato (multi-tenancy via RLS su condomini.amministratore_id),
   // quindi è sicuro lasciar scegliere il ruolo direttamente in fase di
@@ -44,6 +55,7 @@ export async function registrati(
     options: {
       data: { nome, cognome, ruolo },
       captchaToken: captchaToken || undefined,
+      emailRedirectTo: `${origine}/login`,
     },
   });
 
