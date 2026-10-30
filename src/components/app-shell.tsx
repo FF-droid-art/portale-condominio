@@ -219,15 +219,20 @@ export function AppShell({
       {banner}
 
       <div className="flex flex-1 flex-col lg:flex-row">
-        {/* Barra laterale fissa da 1024px in su. */}
-        <aside className="hidden w-64 shrink-0 border-r border-border bg-surface lg:flex lg:flex-col">
+        {/* Barra laterale fissa da 1024px in su. `nascondi-in-stampa` la fa
+            scomparire sul foglio: su carta la navigazione non è navigabile e
+            rubherebbe un terzo della pagina (serve alla pagina dei codici di
+            invito, pensata per essere stampata, ma vale per qualunque pagina
+            si stampi). La regola sta in globals.css perché deve battere
+            `lg:flex`, che ha la stessa specificità di una utility `hidden`. */}
+        <aside className="nascondi-in-stampa hidden w-64 shrink-0 border-r border-border bg-surface lg:flex lg:flex-col">
           <div className="barra-laterale-fissa sticky top-0 flex h-dvh flex-col">
             {contenutoNav}
           </div>
         </aside>
 
         {/* Barra superiore compatta sotto i 1024px. */}
-        <header className="barra-superiore-mobile sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-surface/85 px-4 backdrop-blur lg:hidden">
+        <header className="barra-superiore-mobile nascondi-in-stampa sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-surface/85 px-4 backdrop-blur lg:hidden">
           <Button
             variant="ghost"
             size="sm"
@@ -277,7 +282,7 @@ export function AppShell({
         )}
 
         <main className="min-w-0 flex-1">
-          <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+          <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10 print:max-w-none print:p-0">
             {children}
           </div>
         </main>

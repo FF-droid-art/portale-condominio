@@ -369,3 +369,37 @@ body {
     padding-top: 0.5rem;
   }
 }
+
+/* ==========================================================================
+   Stampa
+
+   Il portale si consulta a schermo, con un'eccezione: il foglio dei codici
+   di invito (`/admin/condomini/[id]/inviti`), che nasce per essere stampato,
+   tagliato e consegnato. Invece di un foglio di stile di stampa per quella
+   pagina, poche regole globali — chi stampa una qualunque altra pagina
+   (un elenco spese, un ordine del giorno) ottiene lo stesso vantaggio.
+
+   `nascondi-in-stampa` sta qui e non come utility `print:hidden` perché
+   deve battere `lg:flex` sulla barra laterale: due utility con la stessa
+   specificità verrebbero risolte dall'ordine nel foglio di stile, non da
+   quello delle classi.
+   ========================================================================== */
+
+@media print {
+  .nascondi-in-stampa {
+    display: none !important;
+  }
+
+  /* Su carta il fondo colorato è inchiostro sprecato e il testo grigio
+     chiaro diventa illeggibile. */
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  /* I margini del foglio li decide il browser; la pagina non deve
+     aggiungere i propri né provare a riempire l'altezza dello schermo. */
+  .guscio-app {
+    min-height: 0;
+  }
+}

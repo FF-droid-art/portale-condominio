@@ -463,4 +463,304 @@ describe.skipIf(!CONFIGURATO)("isolamento tenant (progetto Supabase di test)", (
     expect(erroreDaA).toBeNull();
     expect(scaricatoDaA).not.toBeNull();
   });
+
+  /* ======================================================================
+     Codici di invito per unità (`inviti_unita`).
+
+     Il codice di invito è una credenziale: chi lo ha può collegare un
+     account appena creato a quell'unità, e quindi vedere i dati di quel
+     condominio. Deve essere leggibile dal solo amministratore che possiede
+     il condominio dell'unità — non dai condòmini (nemmeno il proprio: sono
+     già collegati, e un codice in mano a chi non deve distribuirlo è un
+     codice che gira), non dagli altri amministratori, non da chi non è
+     autenticato.
+
+     L'unica via pubblica è `valida_codice_invito`, che restituisce due soli
+     campi non sensibili e serve al riscontro nel form di registrazione.
+
+     Se questi test segnalano che la tabella o le funzioni non esistono,
+     manca l'ultimo blocco di supabase/schema.sql ("Migrazione: codice di
+     invito per unità") sul progetto di test: va applicato a mano nel SQL
+     Editor, come tutte le migrazioni di questo progetto.
+     ====================================================================== */
+
+  const ALFABETO_INVITO = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
+
+  async function codiceDiUnita(unitaId: string): Promise<string> {
+    const { data, error } = await service
+      .from("inviti_unita")
+      .select("codice")
+      .eq("unita_id", unitaId)
+      .maybeSingle();
+    expect(
+      error,
+      "Tabella inviti_unita non disponibile: applica il blocco «Migrazione: codice di invito per unità» di supabase/schema.sql sul progetto di test."
+    ).toBeNull();
+    expect(data?.codice, `Nessun codice di invito per l'unità ${unitaId}`).toBeTruthy();
+    return data!.codice as string;
+  }
+
+  test("il trigger genera da sé il codice di invito di ogni unità, da qualunque percorso nasca", async () => {
+    // Le unità del setup sono state create con la service role e nessuna
+    // riga di `inviti_unita` è stata scritta dal test: se il codice c'è, è
+    // il trigger `trg_unita_crea_invito` ad averlo messo.
+    for (const unitaId of [unitaAId, unitaBId]) {
+      const codice = await codiceDiUnita(unitaId);
+      expect(codice).toMatch(ALFABETO_INVITO);
+    }
+
+    // Due unità diverse non condividono il codice: è l'intero senso di
+    // avere un codice per unità invece di uno per condominio.
+    expect(await codiceDiUnita(unitaAId)).not.toBe(await codiceDiUnita(unitaBId));
+
+    // E un'unità creata adesso, senza che l'applicazione faccia nulla.
+    const { data: nuova, error: erroreNuova } = await service
+      .from("unita")
+      .insert({
+        condominio_id: condominioBId,
+        identificativo: `Interno trigger ${suffisso}`,
+        millesimi_proprieta: 1,
+      })
+      .select("id")
+      .single();
+    expect(erroreNuova).toBeNull();
+
+    try {
+      const codiceNuovo = await codiceDiUnita(nuova!.id);
+      expect(codiceNuovo).toMatch(ALFABETO_INVITO);
+
+      // La funzione pubblica lo riconosce, anche scritto come lo si
+      // ricopia da un foglio: con il trattino e in minuscolo.
+      const anonimo = createClient(URL_TEST!, ANON_TEST!, { auth: { persistSession: false } });
+      const comeDigitato = `${codiceNuovo.slice(0, 4)}-${codiceNuovo.slice(4)}`.toLowerCase();
+      const { data: validazione, error: erroreValidazione } = await anonimo.rpc(
+        "valida_codice_invito",
+        { p_codice: comeDigitato }
+      );
+      expect(erroreValidazione).toBeNull();
+      expect(validazione?.[0]?.valido).toBe(true);
+      expect(validazione?.[0]?.condominio_nome).toBe(`Condominio Test B ${suffisso}`);
+      expect(validazione?.[0]?.unita_identificativo).toBe(`Interno trigger ${suffisso}`);
+      // Nient'altro: nessun id, nessun indirizzo, nessun dato su chi abita lì.
+      expect(Object.keys(validazione?.[0] ?? {}).sort()).toEqual([
+        "condominio_nome",
+        "unita_identificativo",
+        "valido",
+      ]);
+
+      // Un codice inesistente non è un errore: è "non valido" e basta,
+      // senza dire niente di più a chi sta provando.
+      const { data: inesistente, error: erroreInesistente } = await anonimo.rpc(
+        "valida_codice_invito",
+        { p_codice: "ZZZZ-ZZZZ" }
+      );
+      expect(erroreInesistente).toBeNull();
+      expect(inesistente?.[0]?.valido).toBe(false);
+      expect(inesistente?.[0]?.condominio_nome).toBeNull();
+    } finally {
+      // L'unità di prova non deve restare: un altro caso di questa suite
+      // conta le unità dei due condomìni.
+      await service.from("unita").delete().eq("id", nuova!.id);
+    }
+  });
+
+  test("un condòmino non può leggere i codici di invito, nemmeno quello della propria unità", async () => {
+    const codiceA = await codiceDiUnita(unitaAId);
+
+    // 1) Select diretta sulla tabella: niente, in nessuna forma. Con RLS
+    //    attiva e nessuna policy per il condòmino la select non è un
+    //    errore, è vuota — quindi si accettano entrambi gli esiti ma non
+    //    una riga.
+    const { data: tutti, error: erroreTutti } = await clienteCondominoA
+      .from("inviti_unita")
+      .select("codice, unita_id");
+    expect(erroreTutti ? [] : (tutti ?? [])).toEqual([]);
+
+    // 2) Nemmeno filtrando per la PROPRIA unità: il condòmino A possiede
+    //    l'unità A, ma il codice non è un dato che gli serve.
+    const { data: propria, error: errorePropria } = await clienteCondominoA
+      .from("inviti_unita")
+      .select("codice")
+      .eq("unita_id", unitaAId);
+    expect(errorePropria ? [] : (propria ?? [])).toEqual([]);
+
+    // 3) Né per quella di un altro condominio.
+    const { data: altrui, error: erroreAltrui } = await clienteCondominoA
+      .from("inviti_unita")
+      .select("codice")
+      .eq("unita_id", unitaBId);
+    expect(erroreAltrui ? [] : (altrui ?? [])).toEqual([]);
+
+    // 4) Nemmeno conoscendo il codice: cercarlo per valore non lo
+    //    conferma. È il filtro che un attaccante proverebbe avendo in mano
+    //    un codice e volendo sapere a che unità appartiene.
+    const { data: perCodice, error: errorePerCodice } = await clienteCondominoA
+      .from("inviti_unita")
+      .select("unita_id")
+      .eq("codice", codiceA);
+    expect(errorePerCodice ? [] : (perCodice ?? [])).toEqual([]);
+
+    // 5) Chi non è autenticato, uguale.
+    const anonimo = createClient(URL_TEST!, ANON_TEST!, { auth: { persistSession: false } });
+    const { data: daAnonimo, error: erroreAnonimo } = await anonimo
+      .from("inviti_unita")
+      .select("codice");
+    expect(erroreAnonimo ? [] : (daAnonimo ?? [])).toEqual([]);
+
+    // 6) E non può scriverne uno: un condòmino che potesse inserire una
+    //    riga si fabbricherebbe l'accesso a un'unità qualunque.
+    const { error: erroreInserimento } = await clienteCondominoA
+      .from("inviti_unita")
+      .insert({ unita_id: unitaBId, codice: `ZZZZ${suffisso.slice(0, 4).toUpperCase()}` });
+    expect(erroreInserimento).not.toBeNull();
+
+    // 7) Controllo positivo: l'amministratore del condominio A lo legge
+    //    davvero, altrimenti i sei controlli sopra passerebbero anche se la
+    //    tabella fosse inaccessibile a tutti.
+    const { data: perAdmin, error: errorePerAdmin } = await clienteAdminA
+      .from("inviti_unita")
+      .select("codice")
+      .eq("unita_id", unitaAId)
+      .maybeSingle();
+    expect(errorePerAdmin).toBeNull();
+    expect(perAdmin?.codice).toBe(codiceA);
+  });
+
+  test("un amministratore non può leggere né rigenerare il codice di un'unità che non è sua", async () => {
+    const codiceA = await codiceDiUnita(unitaAId);
+
+    // 1) Lettura dell'unità altrui: zero righe, anche conoscendone l'id.
+    const { data: letti, error: erroreLettura } = await clienteAdminB
+      .from("inviti_unita")
+      .select("codice")
+      .eq("unita_id", unitaAId);
+    expect(erroreLettura ? [] : (letti ?? [])).toEqual([]);
+
+    // 2) Rigenerazione dell'unità altrui: la funzione è `security definer`,
+    //    quindi qui non basta che la RLS non restituisca righe — la
+    //    verifica di appartenenza dentro la funzione deve alzare
+    //    un'eccezione, altrimenti un amministratore qualunque potrebbe
+    //    invalidare a comando i codici di uno stabile non suo.
+    const { error: erroreRigenera } = await clienteAdminB.rpc("rigenera_codice_invito", {
+      p_unita_id: unitaAId,
+    });
+    expect(erroreRigenera).not.toBeNull();
+
+    // 3) Backfill di un condominio altrui: stesso discorso.
+    const { error: erroreBackfill } = await clienteAdminB.rpc("genera_codici_invito_mancanti", {
+      p_condominio_id: condominioAId,
+    });
+    expect(erroreBackfill).not.toBeNull();
+
+    // 4) Il codice di A è rimasto quello di prima: nessuno dei tentativi
+    //    sopra ha avuto effetto.
+    expect(await codiceDiUnita(unitaAId)).toBe(codiceA);
+
+    // 5) Un condòmino non può chiamare nessuna delle due funzioni.
+    const { error: erroreRigeneraCondomino } = await clienteCondominoA.rpc(
+      "rigenera_codice_invito",
+      { p_unita_id: unitaAId }
+    );
+    expect(erroreRigeneraCondomino).not.toBeNull();
+
+    // 6) Controllo positivo: l'amministratore giusto rigenera, ottiene un
+    //    codice nuovo e il precedente smette di valere nello stesso
+    //    istante — che è il motivo per cui si rigenera.
+    const { data: nuovoCodice, error: erroreRigeneraA } = await clienteAdminA.rpc(
+      "rigenera_codice_invito",
+      { p_unita_id: unitaAId }
+    );
+    expect(erroreRigeneraA).toBeNull();
+    expect(nuovoCodice).toMatch(ALFABETO_INVITO);
+    expect(nuovoCodice).not.toBe(codiceA);
+
+    const anonimo = createClient(URL_TEST!, ANON_TEST!, { auth: { persistSession: false } });
+    const { data: vecchio } = await anonimo.rpc("valida_codice_invito", { p_codice: codiceA });
+    expect(vecchio?.[0]?.valido).toBe(false);
+    const { data: corrente } = await anonimo.rpc("valida_codice_invito", {
+      p_codice: nuovoCodice,
+    });
+    expect(corrente?.[0]?.valido).toBe(true);
+  });
+
+  test("chi si registra con un codice di invito risulta collegato alla propria unità", async () => {
+    // È il punto di tutta la funzionalità: il collegamento lo fa il trigger
+    // `handle_new_user` lato database, perché con la conferma email
+    // obbligatoria subito dopo signUp() non esiste ancora una sessione.
+    const codiceB = await codiceDiUnita(unitaBId);
+    const email = `test-invito-${suffisso}@example.com`;
+
+    const { data: creato, error: erroreCreazione } = await service.auth.admin.createUser({
+      email,
+      password: PASSWORD,
+      email_confirm: true,
+      user_metadata: {
+        nome: "Nuovo",
+        cognome: "Condòmino",
+        ruolo: "condomino",
+        // Come lo passa la server action di registrazione, ma scritto come
+        // lo digita una persona: con il trattino e in minuscolo.
+        codice_invito: `${codiceB.slice(0, 4)}-${codiceB.slice(4)}`.toLowerCase(),
+      },
+    });
+    expect(erroreCreazione).toBeNull();
+    const nuovoUtenteId = creato?.user?.id;
+    expect(nuovoUtenteId).toBeTruthy();
+
+    try {
+      const { data: legami, error: erroreLegami } = await service
+        .from("unita_proprietari")
+        .select("unita_id, quota_possesso, tipo_soggetto")
+        .eq("utente_id", nuovoUtenteId!);
+      expect(erroreLegami).toBeNull();
+      expect(legami?.length).toBe(1);
+      expect(legami?.[0]?.unita_id).toBe(unitaBId);
+      // Default esistenti, non toccati: il limite noto è che con più
+      // comproprietari la somma delle quote va corretta a mano.
+      expect(Number(legami?.[0]?.quota_possesso)).toBe(100);
+      expect(legami?.[0]?.tipo_soggetto).toBe("proprietario");
+    } finally {
+      if (nuovoUtenteId) await service.auth.admin.deleteUser(nuovoUtenteId).catch(() => {});
+    }
+  });
+
+  test("un codice inesistente non impedisce la registrazione, la lascia solo senza collegamento", async () => {
+    // Il caso della lettera ricopiata male. L'account deve nascere comunque:
+    // l'amministratore potrà collegare la persona a mano, come si faceva
+    // prima dei codici.
+    const email = `test-invito-ko-${suffisso}@example.com`;
+    const { data: creato, error: erroreCreazione } = await service.auth.admin.createUser({
+      email,
+      password: PASSWORD,
+      email_confirm: true,
+      user_metadata: {
+        nome: "Codice",
+        cognome: "Sbagliato",
+        ruolo: "condomino",
+        codice_invito: "ZZZZ-ZZZZ",
+      },
+    });
+    expect(erroreCreazione).toBeNull();
+    const utenteSenzaLegameId = creato?.user?.id;
+    expect(utenteSenzaLegameId).toBeTruthy();
+
+    try {
+      const { data: utente } = await service
+        .from("utenti")
+        .select("ruolo")
+        .eq("id", utenteSenzaLegameId!)
+        .maybeSingle();
+      expect(utente?.ruolo).toBe("condomino");
+
+      const { data: legami } = await service
+        .from("unita_proprietari")
+        .select("id")
+        .eq("utente_id", utenteSenzaLegameId!);
+      expect(legami ?? []).toEqual([]);
+    } finally {
+      if (utenteSenzaLegameId) {
+        await service.auth.admin.deleteUser(utenteSenzaLegameId).catch(() => {});
+      }
+    }
+  });
 });

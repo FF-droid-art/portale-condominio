@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { urlCanonicoSito } from "@/lib/sito";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,13 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 // URL canonico del sito (SITO-03): serve a Next per trasformare in assoluti
-// gli URL relativi di Open Graph/Twitter/sitemap. `VERCEL_PROJECT_PRODUCTION_URL`
-// è impostata automaticamente da Vercel con il dominio di produzione del
-// progetto — niente da configurare a mano — con un fallback per lo sviluppo
-// locale, dove quella variabile non esiste.
-const urlSito = process.env.VERCEL_PROJECT_PRODUCTION_URL
-  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  : "http://localhost:3000";
+// gli URL relativi di Open Graph/Twitter/sitemap. Il calcolo sta in
+// `src/lib/sito.ts` perché lo usano anche i QR code dei codici di invito.
+const urlSito = urlCanonicoSito();
 
 const TITOLO_DEFAULT = "Portale Condominio";
 const DESCRIZIONE_DEFAULT =

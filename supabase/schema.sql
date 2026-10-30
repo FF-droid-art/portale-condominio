@@ -3695,3 +3695,409 @@ alter table assemblee
   add column if not exists convocazione_inviata_il timestamptz,
   add column if not exists convocazione_email_destinatari int,
   add column if not exists convocazione_email_consegnate int;
+
+
+-- ============================================================
+-- Migrazione: codice di invito per unità
+-- Da applicare manualmente su Supabase (SQL Editor). Idempotente.
+--
+-- Il problema (IDEE-FUTURE.md): un condòmino che si registra su
+-- /registrazione non viene collegato a nessuna unità. L'amministratore
+-- deve accorgersene, cercarlo nell'elenco degli utenti non assegnati e
+-- collegarlo a mano — e fino a quel momento il condòmino entra in
+-- un'area riservata vuota, senza capire perché.
+--
+-- La soluzione: ogni unità ha un codice di invito che l'amministratore
+-- consegna all'occupante (lettera, email, QR in bacheca). Chi lo inserisce
+-- in fase di registrazione risulta collegato alla propria unità appena
+-- l'account esiste, senza nessun intervento manuale.
+--
+-- Le scelte di impianto, e il perché di ognuna:
+--
+-- 1) UN CODICE PER UNITÀ, non uno per condominio. Un codice condominiale
+--    sarebbe più comodo da distribuire ma non direbbe a quale unità
+--    collegare chi lo usa: si tornerebbe a chiederlo a mano, oppure si
+--    rischierebbe di collegare il condòmino all'unità sbagliata. La
+--    precisione vale più della comodità, tanto la distribuzione è
+--    risolta dalla pagina di riepilogo stampabile per condominio.
+--
+-- 2) GENERATO DAL DATABASE CON UN TRIGGER, non dall'applicazione. Le
+--    unità nascono da almeno tre percorsi diversi (il form `creaUnita`,
+--    `importa_condomini_unita_persone`, la più vecchia
+--    `importa_condomini_unita`, più il seed dimostrativo e qualunque
+--    insert futuro): un trigger `after insert on unita` copre tutti
+--    senza che nessuno di quei percorsi debba saperne nulla, oggi e
+--    domani. Un amministratore con cento unità non deve "creare" cento
+--    codici: esistono già, deve solo stamparli.
+--
+-- 3) UNA RIGA PER UNITÀ (`unita_id` unique), non uno storico dei codici
+--    passati. Rigenerare un codice ne invalida il precedente: è
+--    esattamente il senso dell'operazione (il codice è finito alla
+--    persona sbagliata), e tenere in vita i vecchi codici
+--    contraddirebbe lo scopo.
+--
+-- 4) CODICE RIUTILIZZABILE da più persone della stessa unità. Marito e
+--    moglie comproprietari ricevono lo stesso foglio e si registrano
+--    ciascuno col proprio indirizzo: un codice a uso singolo
+--    costringerebbe il secondo a chiedere aiuto all'amministratore.
+--
+-- 5) ALFABETO SENZA CARATTERI AMBIGUI (stile Crockford: via 0, 1, I, L,
+--    O, U). Il codice viene letto da un foglio stampato e ricopiato a
+--    mano, spesso da persone anziane: "0 o O?" è il modo più comune di
+--    sbagliare. Restano 30 caratteri; otto posizioni danno 30^8 circa
+--    6,6e11 combinazioni, che è il motivo per cui questo codice può
+--    essere verificato da un endpoint pubblico senza diventare
+--    enumerabile (vedi il punto su `valida_codice_invito`).
+-- ============================================================
+
+create table if not exists inviti_unita (
+  id uuid primary key default gen_random_uuid(),
+  -- unique: un solo codice attivo per unità (scelta 3).
+  unita_id uuid not null unique references unita(id) on delete cascade,
+  codice text not null unique,
+  creato_il timestamptz not null default now(),
+  aggiornato_il timestamptz not null default now()
+);
+
+-- Genera un codice nuovo di 8 caratteri sull'alfabeto senza ambiguità.
+--
+-- Usa `gen_random_bytes` (pgcrypto, già richiesta in testa a questo file)
+-- e non `random()`: `random()` è un generatore pseudocasuale seminato per
+-- sessione, prevedibile, e questo codice è una credenziale — chi riuscisse
+-- a indovinarne uno si collegherebbe a un'unità non sua.
+--
+-- Il campionamento scarta i byte da 240 in su (240 = 8 x 30): prendere il
+-- resto modulo 30 su tutti i 256 valori renderebbe i primi 16 caratteri
+-- dell'alfabeto leggermente più probabili degli altri. La perdita di
+-- entropia sarebbe minima, ma il rifiuto costa una riga.
+--
+-- Il retry sulla collisione c'è anche se con 6,6e11 combinazioni è
+-- praticamente impossibile incontrarne una: costa poco ed è corretto. Se
+-- dopo dieci tentativi non si trova un codice libero qualcosa è rotto in
+-- modo che non va mascherato (es. il generatore casuale), quindi l'ultimo
+-- caso alza un'eccezione invece di restituire un duplicato.
+create or replace function public.genera_codice_invito()
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  alfabeto constant text := '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+  base constant int := length(alfabeto);      -- 30
+  soglia constant int := (256 / base) * base; -- 240
+  candidato text;
+  b int;
+begin
+  -- `tentativo` e `i` non sono dichiarati sopra di proposito: la forma
+  -- `for <var> in a..b` li dichiara da sé, interi e locali al ciclo.
+  for tentativo in 1..10 loop
+    candidato := '';
+    for i in 1..8 loop
+      loop
+        b := get_byte(gen_random_bytes(1), 0);
+        exit when b < soglia;
+      end loop;
+      candidato := candidato || substr(alfabeto, 1 + (b % base), 1);
+    end loop;
+
+    if not exists (select 1 from inviti_unita where codice = candidato) then
+      return candidato;
+    end if;
+  end loop;
+
+  raise exception 'Impossibile generare un codice di invito univoco dopo 10 tentativi.';
+end;
+$$;
+
+-- `genera_codice_invito` non va esposta come RPC. Non scrive nulla e non
+-- rivela niente, ma non ha nessun motivo di essere chiamabile da fuori: le
+-- tre funzioni che la usano sono `security definer` e la invocano con i
+-- privilegi del proprietario, quindi non hanno bisogno del grant, e il
+-- trigger nemmeno (per una funzione di trigger il permesso si verifica
+-- quando il trigger viene creato, non a ogni riga). COD-05 ha già
+-- mostrato che su Supabase i privilegi di default dello schema public
+-- concedono EXECUTE su ogni nuova funzione ad `anon` e `authenticated` e
+-- che "revoke ... from public" non basta a toglierlo: va revocato dai due
+-- ruoli per nome.
+revoke execute on function public.genera_codice_invito() from anon, authenticated;
+
+-- Il trigger della scelta 2: ogni unità, da qualunque percorso nasca, ha
+-- il suo codice. `on conflict do nothing` lo rende innocuo se la riga
+-- esistesse già (backfill appena lanciato, reimportazione).
+create or replace function public.crea_invito_unita()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into inviti_unita (unita_id, codice)
+  values (new.id, genera_codice_invito())
+  on conflict (unita_id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_unita_crea_invito on unita;
+create trigger trg_unita_crea_invito
+  after insert on unita
+  for each row execute function public.crea_invito_unita();
+
+-- RLS: il codice è visibile e modificabile solo dall'amministratore che
+-- possiede il condominio dell'unità. Nessuna policy per il condòmino: il
+-- codice della propria unità non gli serve (è già collegato) e quello
+-- delle altre non deve vederlo. Nessuna policy per `anon`: la verifica
+-- prima della registrazione passa da `valida_codice_invito`, che
+-- restituisce solo due campi non sensibili, non da questa tabella.
+alter table inviti_unita enable row level security;
+
+drop policy if exists "inviti_unita_admin" on inviti_unita;
+create policy "inviti_unita_admin" on inviti_unita
+  for all using (ruolo_corrente() = 'amministratore' and admin_gestisce_unita(unita_id))
+  with check (ruolo_corrente() = 'amministratore' and admin_gestisce_unita(unita_id));
+
+-- Difesa in profondità (stessa logica del blocco COD-05 più sopra): su
+-- Supabase i privilegi di default dello schema public concedono select a
+-- `anon` su ogni nuova tabella. La RLS lo rende comunque cieco, ma una
+-- policy aggiunta per sbaglio in futuro non deve bastare a esporre i
+-- codici a chi non è autenticato.
+revoke all on table inviti_unita from anon;
+
+-- Verifica pubblica del codice, PRIMA che un account esista.
+--
+-- Serve al form di registrazione per mostrare "Ti colleghi a: Condominio
+-- Rossi, Interno 3" mentre si digita: un codice ricopiato male si vede
+-- subito, invece di scoprirlo quando si è già registrati sull'unità di
+-- qualcun altro.
+--
+-- Restituisce solo l'identificativo dell'unità e il nome del condominio.
+-- Nessun dato su chi ci abita, nessun indirizzo, nessun id interno: chi
+-- ha il codice in mano sta già per entrare in quell'unità, e chi non lo
+-- ha non ottiene nulla di utile.
+--
+-- Il grant ad `anon` è necessario (chi si registra non ha ancora una
+-- sessione) e non introduce un canale di enumerazione: 30^8 combinazioni
+-- rendono la ricerca a tentativi inutile. Per lo stesso motivo non c'è un
+-- rate limiter applicativo davanti a questa funzione: sarebbe aggirabile
+-- chiamando la RPC direttamente con la chiave anonima, che è pubblica per
+-- definizione, quindi darebbe l'illusione di una protezione invece di una
+-- protezione.
+create or replace function public.valida_codice_invito(p_codice text)
+returns table (valido boolean, unita_identificativo text, condominio_nome text)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  -- Il codice si scrive "ABCD-2345" ma si confronta senza trattini, senza
+  -- spazi e in maiuscolo: chi lo ricopia a mano non deve indovinare la
+  -- punteggiatura.
+  v_codice text := upper(regexp_replace(coalesce(p_codice, ''), '[^0-9A-Za-z]', '', 'g'));
+  v_unita text;
+  v_condominio text;
+begin
+  if length(v_codice) = 0 then
+    return query select false, null::text, null::text;
+    return;
+  end if;
+
+  select u.identificativo, c.nome
+    into v_unita, v_condominio
+  from inviti_unita i
+  join unita u on u.id = i.unita_id
+  join condomini c on c.id = u.condominio_id
+  where i.codice = v_codice;
+
+  return query select (v_unita is not null), v_unita, v_condominio;
+end;
+$$;
+
+grant execute on function public.valida_codice_invito(text) to anon, authenticated;
+
+-- Rigenerazione del codice di una singola unità: serve quando un codice è
+-- finito alla persona sbagliata. Aggiorna la riga esistente, quindi il
+-- codice precedente smette di valere nello stesso istante.
+create or replace function public.rigenera_codice_invito(p_unita_id uuid)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_codice text;
+begin
+  -- Verifica interna di appartenenza, come negli altri security definer di
+  -- questo file: la funzione gira con i privilegi del proprietario, quindi
+  -- il perimetro va imposto qui e non può essere delegato alla RLS.
+  if not admin_gestisce_unita(p_unita_id) then
+    raise exception 'Non autorizzato: questa unità non appartiene a un condominio gestito da questo utente.';
+  end if;
+
+  insert into inviti_unita (unita_id, codice)
+  values (p_unita_id, genera_codice_invito())
+  on conflict (unita_id) do update set
+    codice = genera_codice_invito(),
+    aggiornato_il = now()
+  returning codice into v_codice;
+
+  return v_codice;
+end;
+$$;
+
+grant execute on function public.rigenera_codice_invito(uuid) to authenticated;
+
+-- Backfill per i condomìni creati prima di questa migrazione, le cui unità
+-- non hanno una riga in `inviti_unita` perché il trigger non esisteva
+-- ancora. È una funzione SQL e non un ciclo nella server action perché
+-- PostgREST non sa fare `insert ... select` e perché il codice va generato
+-- dal database: dall'applicazione servirebbe una chiamata di rete per
+-- unità, con il generatore duplicato in TypeScript.
+create or replace function public.genera_codici_invito_mancanti(p_condominio_id uuid)
+returns int
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_unita uuid;
+  v_creati int := 0;
+begin
+  if not admin_possiede_condominio(p_condominio_id) then
+    raise exception 'Non autorizzato: questo condominio non è gestito da questo utente.';
+  end if;
+
+  -- Una riga alla volta e non un solo `insert ... select`:
+  -- `genera_codice_invito` non vede le righe non ancora scritte dalla
+  -- stessa istruzione, quindi due unità dello stesso lotto potrebbero (con
+  -- probabilità trascurabile, ma non nulla) ricevere lo stesso codice e far
+  -- fallire tutto il backfill. Riga per riga, ogni codice è confrontato con
+  -- quelli già inseriti.
+  for v_unita in
+    select u.id
+    from unita u
+    left join inviti_unita i on i.unita_id = u.id
+    where u.condominio_id = p_condominio_id and i.id is null
+    order by u.identificativo
+  loop
+    insert into inviti_unita (unita_id, codice)
+    values (v_unita, genera_codice_invito())
+    on conflict (unita_id) do nothing;
+    if found then
+      v_creati := v_creati + 1;
+    end if;
+  end loop;
+
+  return v_creati;
+end;
+$$;
+
+grant execute on function public.genera_codici_invito_mancanti(uuid) to authenticated;
+
+-- ------------------------------------------------------------
+-- handle_new_user: collegamento automatico all'unità
+--
+-- Questa è la riscrittura della funzione già definita più in alto in
+-- questo file (provisioning della riga `utenti`). Tutto quello che faceva
+-- prima continua a farlo; in più, se nei metadati di registrazione c'è un
+-- codice di invito valido, collega il nuovo utente alla sua unità.
+--
+-- PERCHÉ QUI E NON IN UNA CHIAMATA SEPARATA DAL CLIENT: la registrazione
+-- del portale richiede la conferma dell'email (vedi
+-- src/app/registrazione/page.tsx, "Controlla la tua email"), quindi subito
+-- dopo `signUp()` non esiste ancora nessuna sessione utilizzabile e nessuna
+-- query autenticata è possibile. Il trigger invece gira lato database nel
+-- momento in cui l'utente nasce, senza bisogno di una sessione.
+--
+-- UN CODICE SBAGLIATO NON BLOCCA LA REGISTRAZIONE: se il codice non esiste
+-- (o il ruolo richiesto è 'amministratore', che non si collega a nessuna
+-- unità) l'account viene creato comunque, semplicemente senza collegamento
+-- automatico — esattamente come succede oggi a chi si registra senza
+-- codice. Anche un errore imprevisto nell'inserimento viene catturato e
+-- degradato a `warning`: perdere un collegamento che l'amministratore può
+-- rifare a mano è meno grave che rifiutare la creazione dell'account.
+--
+-- LIMITE NOTO, DA NON RISOLVERE QUI: se più comproprietari della stessa
+-- unità si registrano separatamente con lo stesso codice, ciascuno riceve
+-- la `quota_possesso` di default (100) e la somma può superare il 100%
+-- finché l'amministratore non la corregge dalla scheda dell'unità. Non
+-- esiste una divisione automatica sensata: quante persone si registreranno
+-- in totale non è noto quando si registra la prima.
+--
+-- Caso diverso e invece gestito: l'anagrafica di quella persona esiste già
+-- su quell'unità (l'amministratore l'ha importata) e aspetta solo un
+-- account. Lì non si aggiunge un secondo legame — la persona comparirebbe
+-- due volte nella scheda dell'unità, con la sua quota contata due volte —
+-- ma si collega l'account all'anagrafica che c'è già, riconoscendola
+-- dall'indirizzo email.
+-- ------------------------------------------------------------
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ruolo_effettivo text := case
+    when new.raw_user_meta_data->>'ruolo' = 'amministratore' then 'amministratore'
+    else 'condomino'
+  end;
+  codice_invito text := upper(
+    regexp_replace(coalesce(new.raw_user_meta_data->>'codice_invito', ''), '[^0-9A-Za-z]', '', 'g')
+  );
+  v_unita_id uuid;
+  v_legame_id uuid;
+  v_anagrafica_id uuid;
+begin
+  insert into public.utenti (id, nome, cognome, email, ruolo)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'nome', ''),
+    coalesce(new.raw_user_meta_data->>'cognome', ''),
+    new.email,
+    ruolo_effettivo
+  );
+
+  if ruolo_effettivo = 'condomino' and length(codice_invito) > 0 then
+    begin
+      select i.unita_id into v_unita_id
+      from public.inviti_unita i
+      where i.codice = codice_invito;
+
+      if v_unita_id is not null then
+        -- Legame già presente su quell'unità per la stessa email, ancora
+        -- senza account: si "reclama" quello invece di crearne un altro.
+        select up.id, up.anagrafica_id into v_legame_id, v_anagrafica_id
+        from public.unita_proprietari up
+        join public.anagrafiche a on a.id = up.anagrafica_id
+        where up.unita_id = v_unita_id
+          and up.utente_id is null
+          and a.email is not null
+          and lower(a.email) = lower(new.email)
+        order by up.created_at
+        limit 1;
+
+        if v_legame_id is not null then
+          update public.unita_proprietari set utente_id = new.id where id = v_legame_id;
+          update public.anagrafiche set utente_id = new.id
+          where id = v_anagrafica_id and utente_id is null;
+        else
+          insert into public.unita_proprietari (unita_id, utente_id)
+          values (v_unita_id, new.id)
+          on conflict (unita_id, utente_id) do nothing;
+        end if;
+      end if;
+    exception when others then
+      -- COD-09: l'esito va comunque a log, altrimenti un collegamento che
+      -- non avviene più resterebbe invisibile.
+      raise warning '[inviti] collegamento automatico non riuscito per utente %: %', new.id, sqlerrm;
+    end;
+  end if;
+
+  return new;
+end;
+$$;

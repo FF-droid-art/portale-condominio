@@ -1,120 +1,39 @@
-"use client";
+import {
+  LUNGHEZZA_CODICE_INVITO,
+  formattaCodiceInvito,
+  normalizzaCodiceInvito,
+} from "@/lib/inviti";
+import { FormRegistrazione } from "./form-registrazione";
 
-import { useActionState, useState } from "react";
-import Link from "next/link";
-import { MailCheck } from "lucide-react";
-import { registrati } from "./actions";
-import { AuthShell, AuthLink } from "@/components/auth-shell";
-import { Field, FormGrid, Input, Select } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
-import { FormError } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { TurnstileWidget } from "@/components/turnstile-widget";
+/**
+ * La pagina è un Server Component sottile il cui unico compito è leggere
+ * `?codice=` dall'URL e passarlo al modulo, che è il componente client.
+ *
+ * Perché non `useSearchParams` dentro al modulo: quel hook è un hook
+ * client e, su una rotta prerenderizzata, costringe a rendere nel browser
+ * tutto l'albero fino al più vicino confine `Suspense` (vedi
+ * `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/use-search-params.md`).
+ * Il parametro qui serve solo come valore iniziale di un campo: leggerlo
+ * lato server e passarlo come prop evita sia il confine `Suspense` sia il
+ * lampeggio del campo vuoto prima dell'idratazione — che su un flusso che
+ * arriva da un QR code in bacheca è esattamente il momento in cui l'utente
+ * guarda lo schermo.
+ */
+export default async function RegistrazionePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ codice?: string | string[] }>;
+}) {
+  const { codice } = await searchParams;
+  const grezzo = Array.isArray(codice) ? codice[0] : codice;
 
-export default function RegistrazionePage() {
-  const [stato, action, pending] = useActionState(registrati, undefined);
-  // Se la chiave pubblica del captcha non è configurata, il widget non
-  // compare: in quel caso il form resta utilizzabile senza bloccarsi in
-  // attesa di una verifica che non arriverà mai (es. in sviluppo locale).
-  const captchaConfigurato = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
-  const [captchaPronto, setCaptchaPronto] = useState(!captchaConfigurato);
-
-  if (stato?.successo) {
-    return (
-      <AuthShell
-        titolo="Controlla la tua email"
-        sottotitolo="Ti abbiamo inviato un link di conferma: aprilo per attivare l'account, poi potrai accedere."
-      >
-        <div className="flex flex-col items-center gap-5 text-center">
-          <span
-            className="grid size-12 place-items-center rounded-2xl bg-success-bg text-success"
-            aria-hidden="true"
-          >
-            <MailCheck className="size-6" />
-          </span>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Se non lo trovi entro qualche minuto, controlla anche la cartella
-            della posta indesiderata.
-          </p>
-          <Button href="/login" variant="secondary" full>
-            Torna all&apos;accesso
-          </Button>
-        </div>
-      </AuthShell>
-    );
-  }
-
-  return (
-    <AuthShell
-      titolo="Crea il tuo account"
-      sottotitolo="Bastano pochi dati: potrai completare tutto il resto dopo."
-      piede={
-        <>
-          Hai già un account? <AuthLink href="/login">Accedi</AuthLink>
-        </>
-      }
-    >
-      <form action={action} className="flex flex-col gap-4">
-        <FormGrid colonne={2}>
-          <Field id="nome" label="Nome" required>
-            <Input name="nome" autoComplete="given-name" required />
-          </Field>
-          <Field id="cognome" label="Cognome" required>
-            <Input name="cognome" autoComplete="family-name" required />
-          </Field>
-        </FormGrid>
-
-        <Field id="email" label="Email" required>
-          <Input
-            name="email"
-            type="email"
-            autoComplete="email"
-            autoCapitalize="none"
-            spellCheck={false}
-            placeholder="nome@esempio.it"
-            required
-          />
-        </Field>
-
-        <Field id="password" label="Password" required hint="Almeno 8 caratteri.">
-          <PasswordInput name="password" autoComplete="new-password" minLength={8} required />
-        </Field>
-
-        <Field
-          id="ruolo"
-          label="Come vuoi registrarti?"
-          hint="Puoi cambiare idea più avanti: sarà l'amministratore a collegarti alle tue unità."
-        >
-          <Select name="ruolo" defaultValue="condomino">
-            <option value="condomino">Sono un condòmino</option>
-            <option value="amministratore">Sono l&apos;amministratore di un condominio</option>
-          </Select>
-        </Field>
-
-        <TurnstileWidget onChange={setCaptchaPronto} />
-
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Creando l&apos;account accetti il trattamento dei tuoi dati descritto
-          nella{" "}
-          <Link href="/privacy" className="font-medium text-accent-ink underline-offset-4 hover:underline">
-            privacy policy
-          </Link>
-          .
-        </p>
-
-        <FormError>{stato?.errore}</FormError>
-
-        <Button
-          type="submit"
-          pending={pending}
-          disabled={!captchaPronto}
-          full
-          size="lg"
-          className="mt-1"
-        >
-          {pending ? "Creazione account…" : "Crea account"}
-        </Button>
-      </form>
-    </AuthShell>
+  // Si normalizza subito: il QR porta un codice già formattato, ma un link
+  // ricopiato a mano può arrivare minuscolo o senza trattino. Il taglio a
+  // otto caratteri evita che un parametro arbitrario finisca nel campo
+  // così com'è: quello che non è un codice non va mostrato come tale.
+  const codiceIniziale = formattaCodiceInvito(
+    normalizzaCodiceInvito(grezzo).slice(0, LUNGHEZZA_CODICE_INVITO)
   );
+
+  return <FormRegistrazione codiceIniziale={codiceIniziale} />;
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileDown, Home, User, Users } from "lucide-react";
+import { FileDown, Home, KeyRound, User, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { PageBody, PageHeader } from "@/components/ui/page-header";
 import {
@@ -31,6 +31,11 @@ import { haQuota } from "@/lib/ruoli";
 import { datiAnagrafeMancanti } from "@/lib/anagrafe";
 import { ProprietarioForm } from "./proprietario-form";
 import { RimuoviProprietarioButton } from "./rimuovi-proprietario-button";
+import { CodiceCopiabile } from "@/components/inviti/codice-copiabile";
+import { RigeneraCodiceButton } from "@/components/inviti/rigenera-codice-button";
+import { formattaCodiceInvito, urlRegistrazioneConCodice } from "@/lib/inviti";
+import { qrCodiceInvito } from "@/lib/inviti-qr";
+import { urlCanonicoSito } from "@/lib/sito";
 import { ModificaAnagraficaButton } from "./modifica-anagrafica-button";
 import { ModificaCatastoButton } from "./modifica-catasto-button";
 import { ModificaMillesimiButton } from "./modifica-millesimi-button";
@@ -51,7 +56,7 @@ export default async function UnitaDettaglioPage({
 
   if (!unita) notFound();
 
-  const [{ data: proprietari }, { data: ripartizioniData }] = await Promise.all([
+  const [{ data: proprietari }, { data: ripartizioniData }, { data: invito }] = await Promise.all([
     supabase
       .from("unita_proprietari")
       .select(
@@ -65,7 +70,18 @@ export default async function UnitaDettaglioPage({
         "importo_dovuto, stato_pagamento, data_scadenza, data_pagamento, codice_avviso, spesa:spesa_id(descrizione, categoria, data_spesa)"
       )
       .eq("unita_id", id),
+    // Il codice di invito dell'unità. La riga esiste per ogni unità creata
+    // dopo l'introduzione dei codici (trigger `trg_unita_crea_invito`); per
+    // le più vecchie manca, e la scheda lo dice rimandando al foglio del
+    // condominio, dove c'è il pulsante per crearli tutti in una volta.
+    supabase.from("inviti_unita").select("codice").eq("unita_id", id).maybeSingle(),
   ]);
+
+  const codiceInvito = invito?.codice ?? null;
+  const qrInvito = codiceInvito ? await qrCodiceInvito(codiceInvito) : null;
+  const urlInvito = codiceInvito
+    ? urlRegistrazioneConCodice(urlCanonicoSito(), codiceInvito)
+    : null;
 
   // Stessa aggregazione usata dal PDF: la scheda e il documento non possono
   // raccontare due situazioni diverse.
@@ -178,6 +194,74 @@ export default async function UnitaDettaglioPage({
             </dd>
           </div>
         </dl>
+      </Card>
+
+      {/* Codice di invito: è il modo per far collegare l'occupante alla
+          propria unità da solo, senza che l'amministratore debba cercarlo
+          nell'elenco degli utenti e assegnarlo a mano. Sta in alto, accanto
+          ai dati dell'unità, perché è una delle prime cose da consegnare
+          quando si prende in gestione uno stabile. */}
+      <Card>
+        <CardHeader>
+          <CardHeaderText>
+            <CardTitle>Codice di invito</CardTitle>
+            <CardDescription>
+              Consegnalo agli occupanti di questa unità: chi lo inserisce quando si registra
+              risulta collegato all&apos;unità subito, senza passare da te. Lo stesso codice
+              vale per tutti gli occupanti (per esempio due coniugi comproprietari).
+            </CardDescription>
+          </CardHeaderText>
+          <Button
+            href={`/admin/condomini/${unita.condominio_id}/inviti`}
+            variant="secondary"
+            size="sm"
+          >
+            <KeyRound className="size-4" aria-hidden="true" />
+            Tutti i codici del condominio
+          </Button>
+        </CardHeader>
+
+        {codiceInvito ? (
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <span className="flex items-center gap-1">
+                <CodiceCopiabile
+                  codice={formattaCodiceInvito(codiceInvito)}
+                  etichetta={unita.identificativo}
+                />
+                <RigeneraCodiceButton
+                  unitaId={unita.id}
+                  condominioId={unita.condominio_id}
+                  identificativo={unita.identificativo}
+                />
+              </span>
+              {urlInvito && (
+                <span className="break-all text-xs text-muted-foreground">
+                  {urlInvito.replace(/^https?:\/\//, "")}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">
+                Inquadrando il QR si arriva alla registrazione con il codice già inserito.
+              </span>
+            </div>
+            {qrInvito && (
+              // eslint-disable-next-line @next/next/no-img-element -- data URI generato lato server: niente da ottimizzare e next/image non accetta data URI
+              <img
+                src={qrInvito}
+                alt={`QR code per registrarsi all'unità ${unita.identificativo}`}
+                width={128}
+                height={128}
+                className="size-32 rounded bg-white"
+              />
+            )}
+          </div>
+        ) : (
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Questa unità non ha ancora un codice: è stata creata prima
+            dell&apos;introduzione dei codici di invito. Generalo dal foglio dei codici del
+            condominio, con il pulsante «Genera i codici mancanti».
+          </p>
+        )}
       </Card>
 
       {/* Situazione contabile: serve soprattutto quando l'unità sta per essere

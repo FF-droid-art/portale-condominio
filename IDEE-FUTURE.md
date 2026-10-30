@@ -60,13 +60,19 @@ movimenti.
   per abilitarle); da noi il link videoconferenza è solo di cortesia, il
   voto formale resta legato alla presenza/delega. Possibile evoluzione
   del punto #9 (quorum live).
-- **Collegamento anagrafica → account utente al momento della
-  registrazione**: oggi un condomino importato via wizard (riga in
-  `anagrafiche`) che si registra su `/registrazione` non viene collegato
-  automaticamente al proprio `unita_proprietari` — resta con
-  `anagrafiche.utente_id` vuoto e l'area riservata gli appare vuota.
-  Il campo esiste già in schema (pensato per un "reclama la tua
-  anagrafica" futuro, vedi commento in `supabase/schema.sql` intorno alla
-  riga 1575) ma il flusso di collegamento non è mai stato costruito. È
-  probabilmente il gap più importante per l'esperienza self-service reale
-  dei condomini, indipendente dal restyling e dalle 14 feature in corso.
+- ~~**Collegamento anagrafica → account utente al momento della
+  registrazione**~~ — **fatto** con i codici di invito per unità: ogni
+  unità ha un codice generato dal database (trigger `trg_unita_crea_invito`
+  su `inviti_unita`), l'amministratore lo distribuisce dal foglio stampabile
+  `/admin/condomini/[id]/inviti` (anche come QR verso
+  `/registrazione?codice=...`) e chi lo inserisce in fase di registrazione
+  viene collegato al proprio `unita_proprietari` dal trigger
+  `handle_new_user`. Se l'anagrafica di quella persona esiste già su
+  quell'unità con la stessa email, l'account viene agganciato a quella
+  invece di creare un secondo legame.
+
+  Quello che resta aperto di questo tema: se più comproprietari della stessa
+  unità si registrano separatamente con lo stesso codice, ciascuno riceve la
+  `quota_possesso` di default (100) e la somma va corretta a mano dalla
+  scheda dell'unità — non è automatizzabile senza sapere in anticipo quante
+  persone si registreranno.

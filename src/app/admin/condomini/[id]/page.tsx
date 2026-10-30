@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarClock, ExternalLink, Home, Landmark, ShieldCheck, Wallet } from "lucide-react";
+import {
+  CalendarClock,
+  ExternalLink,
+  Home,
+  KeyRound,
+  Landmark,
+  ShieldCheck,
+  Wallet,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { PageBody, PageHeader } from "@/components/ui/page-header";
 import {
@@ -232,7 +240,24 @@ export default async function CondominioDettaglioPage({
           <Section
             titolo="Unità e occupanti"
             descrizione="Una riga per ogni soggetto attivo. Apri un'unità per gestirne i soggetti e i millesimi."
-            azioni={<NuovaUnitaForm condominioId={condominio.id} tabelle={colonneMill} />}
+            azioni={
+              <>
+                {/* I codici di invito stanno dietro un collegamento e non in
+                    una colonna di questa tabella: si consegnano una volta,
+                    tutti insieme, e un codice per riga renderebbe più
+                    difficile leggere quello che invece si consulta ogni
+                    giorno (chi abita dove, con quanti millesimi). */}
+                <Button
+                  href={`/admin/condomini/${condominio.id}/inviti`}
+                  variant="secondary"
+                  size="sm"
+                >
+                  <KeyRound className="size-4" aria-hidden="true" />
+                  Codici di invito
+                </Button>
+                <NuovaUnitaForm condominioId={condominio.id} tabelle={colonneMill} />
+              </>
+            }
           >
             {unita?.length ? (
               <Table>
