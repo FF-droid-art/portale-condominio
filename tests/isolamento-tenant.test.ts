@@ -42,6 +42,14 @@ describe.skipIf(!CONFIGURATO)("isolamento tenant (progetto Supabase di test)", (
   let unitaAId: string, unitaBId: string;
   let spesaAId: string;
 
+  // CONT-02: un oggetto nello storage del condominio A, per verificare che
+  // l'esportazione completa non possa leggerlo da un altro amministratore.
+  // Non è dato per scontato che l'upload riesca (il bucket potrebbe non
+  // esistere su un progetto di test incompleto): se fallisce, il caso di
+  // prova lo dice invece di passare in silenzio.
+  const percorsoDocumentoA = () => `condomini/${condominioAId}/isolamento-${suffisso}.txt`;
+  let documentoACaricato = false;
+
   let clienteCondominoA: SupabaseClient;
   let clienteCondominoB: SupabaseClient;
   let clienteAdminA: SupabaseClient;
@@ -138,6 +146,14 @@ describe.skipIf(!CONFIGURATO)("isolamento tenant (progetto Supabase di test)", (
     if (erroreSpesaA || !spesaA) throw new Error(`Setup spesa A fallito: ${erroreSpesaA?.message}`);
     spesaAId = spesaA.id;
 
+    const { error: erroreUpload } = await service.storage
+      .from("documenti-condominio")
+      .upload(percorsoDocumentoA(), new Blob(["documento riservato al condominio A"]), {
+        contentType: "text/plain",
+        upsert: true,
+      });
+    documentoACaricato = !erroreUpload;
+
     clienteCondominoA = await accedi(condominoA.email);
     clienteCondominoB = await accedi(condominoB.email);
     clienteAdminA = await accedi(adminA.email);
@@ -149,6 +165,12 @@ describe.skipIf(!CONFIGURATO)("isolamento tenant (progetto Supabase di test)", (
     // unita_proprietari/spese), poi gli utenti auth (cascata su
     // public.utenti) — altrimenti la FK condomini.amministratore_id
     // blocca la cancellazione dell'amministratore.
+    if (documentoACaricato) {
+      await service.storage
+        .from("documenti-condominio")
+        .remove([percorsoDocumentoA()])
+        .catch(() => {});
+    }
     await service.from("condomini").delete().in("id", [condominioAId, condominioBId]);
     for (const id of [adminAId, adminBId, condominoAId, condominoBId]) {
       await service.auth.admin.deleteUser(id).catch(() => {});
@@ -252,5 +274,96 @@ describe.skipIf(!CONFIGURATO)("isolamento tenant (progetto Supabase di test)", (
     );
     expect(erroreSoggetti).toBeNull();
     expect(Array.isArray(soggetti)).toBe(true);
+  });
+
+  // CONT-02: l'esportazione completa dei dati di un condominio
+  // (`/admin/condomini/[id]/esportazione`). È la route che legge più dati di
+  // tutte — ogni riga e ogni documento di uno stabile in una richiesta — e
+  // non è provabile in isolamento perché vive dentro Next e ha bisogno di una
+  // sessione via cookie. Si provano quindi le DUE cose su cui si appoggia:
+  // la query di verifica della proprietà che la route esegue prima di
+  // raccogliere qualsiasi cosa, e la RLS sulle tabelle e sullo storage che
+  // raccoglie poi.
+  test("CONT-02: un amministratore non può esportare il condominio di un altro amministratore", async () => {
+    // 1) La query di verifica, identica a quella della route: id del
+    //    condominio e amministratore in sessione nello stesso filtro.
+    const { data: verifica, error: erroreVerifica } = await clienteAdminB
+      .from("condomini")
+      .select("id")
+      .eq("id", condominioAId)
+      .eq("amministratore_id", adminBId)
+      .maybeSingle();
+    expect(erroreVerifica).toBeNull();
+    expect(verifica).toBeNull();
+
+    // 2) Lo stesso filtro con l'id dell'amministratore GIUSTO al posto del
+    //    proprio: è la manomissione ovvia, e deve restare senza effetto
+    //    perché la riga non è visibile alla sessione di B in nessun caso.
+    const { data: conIdAltrui } = await clienteAdminB
+      .from("condomini")
+      .select("id")
+      .eq("id", condominioAId)
+      .eq("amministratore_id", adminAId);
+    expect(conIdAltrui).toEqual([]);
+
+    // 3) Le tabelle che l'esportazione legge: anche saltando la verifica,
+    //    non c'è nulla da portare via. Una per tabella "radice" (filtrata
+    //    per condominio) e una per tabella "figlia" (filtrata per id del
+    //    padre), perché sono due catene di policy diverse.
+    const { data: unitaAltrui } = await clienteAdminB
+      .from("unita")
+      .select("id")
+      .eq("condominio_id", condominioAId);
+    expect(unitaAltrui).toEqual([]);
+
+    const { data: ripartizioniAltrui } = await clienteAdminB
+      .from("ripartizioni")
+      .select("id")
+      .eq("spesa_id", spesaAId);
+    expect(ripartizioniAltrui).toEqual([]);
+
+    // 4) Lo storage: l'esportazione scarica i documenti con la sessione
+    //    dell'utente, quindi la policy "documenti_select" è l'ultima
+    //    barriera. Il prefisso "condomini/{id}/" risale a
+    //    admin_possiede_condominio.
+    expect(
+      documentoACaricato,
+      "Upload di prova nel bucket documenti-condominio non riuscito: " +
+        "verifica che supabase/schema.sql sia applicato sul progetto di test."
+    ).toBe(true);
+
+    const { data: scaricatoDaB, error: erroreDaB } = await clienteAdminB.storage
+      .from("documenti-condominio")
+      .download(percorsoDocumentoA());
+    expect(scaricatoDaB).toBeNull();
+    expect(erroreDaB).not.toBeNull();
+
+    const { data: elencoDaB } = await clienteAdminB.storage
+      .from("documenti-condominio")
+      .list(`condomini/${condominioAId}`);
+    expect(elencoDaB ?? []).toEqual([]);
+
+    // 5) Controllo positivo: l'amministratore giusto deve passare tutti e
+    //    quattro i passaggi, altrimenti i test sopra passerebbero solo
+    //    perché l'esportazione è rotta per tutti.
+    const { data: proprio } = await clienteAdminA
+      .from("condomini")
+      .select("id")
+      .eq("id", condominioAId)
+      .eq("amministratore_id", adminAId)
+      .maybeSingle();
+    expect(proprio?.id).toBe(condominioAId);
+
+    const { data: unitaProprie } = await clienteAdminA
+      .from("unita")
+      .select("id")
+      .eq("condominio_id", condominioAId);
+    expect(unitaProprie?.length).toBe(1);
+
+    const { data: scaricatoDaA, error: erroreDaA } = await clienteAdminA.storage
+      .from("documenti-condominio")
+      .download(percorsoDocumentoA());
+    expect(erroreDaA).toBeNull();
+    expect(scaricatoDaA).not.toBeNull();
   });
 });

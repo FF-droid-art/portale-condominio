@@ -34,6 +34,7 @@ import { ContoCorrenteForm } from "../conto-corrente-form";
 import { ModificaCondominioButton } from "./modifica-condominio-button";
 import { TrasferisciCondominioButton } from "./trasferisci-condominio-button";
 import { EliminaCondominioButton } from "./elimina-condominio-button";
+import { EsportaDatiButton } from "./esporta-dati-button";
 import { NuovaUnitaForm } from "./nuova-unita-form";
 import { AvvisoForm } from "./avviso-form";
 import { ScaricaRendiconto } from "@/components/documenti/scarica-rendiconto";
@@ -545,6 +546,25 @@ export default async function CondominioDettaglioPage({
         titolo="Gestione avanzata"
         descrizione="Operazioni che riguardano il condominio nel suo insieme."
       >
+        {/* L'esportazione sta qui accanto a trasferimento ed eliminazione
+            perché è il terzo momento dello stesso passaggio — la fine della
+            gestione di un condominio — ma in una scheda neutra e non nel
+            riquadro di pericolo: scaricare una copia dei dati non toglie
+            nulla a nessuno, ed è anzi la cosa da fare PRIMA di eliminare. */}
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className="text-sm font-semibold">Esportazione dei dati</p>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Scarica in un unico archivio i dati strutturati (CSV) e tutti i documenti di questo
+                condominio. Serve per il passaggio di consegne e per la conservazione decennale che
+                l&apos;art. 1130-bis c.c. mette a carico dell&apos;amministratore.
+              </p>
+            </div>
+            <EsportaDatiButton id={condominio.id} nome={condominio.nome} />
+          </div>
+        </Card>
+
         <Card bordo="pericolo">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-w-0 flex-col gap-1">

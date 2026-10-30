@@ -10,6 +10,14 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      // Stesso alias di vitest.config.mts: `server-only` è un marcatore che
+      // esiste solo dentro la risoluzione di Next, e un test che importa un
+      // modulo marcato (per esempio gli elenchi di colonne dell'esportazione)
+      // fallirebbe sull'import prima di arrivare alla prima asserzione.
+      "server-only": path.resolve(
+        import.meta.dirname,
+        "./node_modules/next/dist/compiled/server-only/empty.js"
+      ),
     },
   },
   test: {

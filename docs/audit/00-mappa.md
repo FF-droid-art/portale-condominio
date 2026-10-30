@@ -83,7 +83,7 @@ Protezione a due livelli verificata: (1) `src/proxy.ts` richiede una sessione Su
 Sezioni (pagina indice + dettaglio dove presente):
 
 - `/admin` — dashboard (`page.tsx`)
-- `/admin/condomini`, `/admin/condomini/[id]` — anagrafica condomìni, conto corrente, rendiconto PDF (`rendiconto/route.ts`), trasferimento/eliminazione condominio
+- `/admin/condomini`, `/admin/condomini/[id]` — anagrafica condomìni, conto corrente, rendiconto PDF (`rendiconto/route.ts`), esportazione completa dei dati in ZIP (`esportazione/route.ts`), trasferimento/eliminazione condominio
 - `/admin/unita/[id]` — unità, proprietari, millesimi, stato patrimoniale PDF (`stato-patrimoniale/route.ts`)
 - `/admin/spese`, `/admin/spese/[id]` — spese e ripartizioni
 - `/admin/assemblee`, `/admin/assemblee/[id]` — convocazione, punti OdG, presenze, firme verbale, documenti PDF (`documenti/route.ts`)
@@ -355,6 +355,14 @@ Per ciascuna feature: pagine/route, server actions, componenti, logica di librer
 - Lib: `src/lib/impersonazione.ts` (tipo `SessioneImpersonazione`, cookie httpOnly `admin_return_session`)
 - Banner: `src/app/area-riservata/impersonazione-banner.tsx`
 - Meccanismo verificato: `visualizzaComeCondomino` genera una sessione reale per il condòmino target (necessaria perché molte policy RLS richiedono `utente_id = auth.uid()`, non simulabile restando autenticati come amministratore), salva la sessione admin originale in un cookie httpOnly per il ripristino
+
+### 7.19 Esportazione completa dei dati di un condominio (CONT-02)
+- Admin: pulsante in `src/app/admin/condomini/[id]/esporta-dati-button.tsx` (sezione "Gestione avanzata" della scheda condominio), download via `src/app/admin/condomini/[id]/esportazione/route.ts`
+- Raccolta dati e ZIP: `src/app/admin/condomini/[id]/esportazione-dati.ts` (`jszip`, nessuna dipendenza nativa); parte pura (serializzazione CSV, nomi di file, testo del LEGGIMI, divisione in blocchi) in `src/lib/esportazione.ts` con `src/lib/esportazione.test.ts`
+- Contenuto: 27 CSV (`dati/*.csv`, separatore `;` + BOM UTF-8), i documenti dello storage divisi in `documenti/{archivio,spese,assemblee,segnalazioni}/`, un `LEGGIMI.txt` con indice e disclaimer su art. 10.1.a DPA / art. 1130-bis c.c.
+- Escluse di proposito: `utenti` e `preferenze_notifiche` (non sono dati del condominio); su `firme_verbale` sono escluse `token`/`otp_hash`/`otp_scadenza`/`otp_tentativi` (credenziali del link pubblico di firma)
+- Nessuna RPC nuova e nessuna migrazione SQL: l'amministratore ha già accesso RLS diretto a tutte le tabelle del proprio condominio, si usano select dirette
+- Autorizzazione: `ruolo === 'amministratore'` + **query vera** su `condomini` filtrata insieme su `id` e `amministratore_id = auth.uid()` prima di qualunque lettura, + RLS su ogni tabella e policy `documenti_select` sullo storage. Regressione in `tests/isolamento-tenant.test.ts` ("CONT-02: un amministratore non può esportare il condominio di un altro amministratore"), comprese le letture di storage
 
 ---
 
