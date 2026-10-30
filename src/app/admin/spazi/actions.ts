@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { minutiDaOra } from "@/lib/prenotazioni";
 
 export type StatoForm = { errore?: string } | undefined;
@@ -55,7 +56,7 @@ export async function creaSpazio(_stato: StatoForm, formData: FormData): Promise
     durata_massima_ore: leggiIntero(formData.get("durata_massima_ore"), null),
   });
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/spazi/creaSpazio") };
   rivalida();
 }
 
@@ -94,7 +95,7 @@ export async function aggiornaSpazio(input: {
     })
     .eq("id", input.id);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/spazi/aggiornaSpazio") };
   rivalida();
   return { ok: true };
 }
@@ -105,7 +106,7 @@ export async function eliminaSpazio(id: string): Promise<{ errore?: string }> {
 
   const supabase = await createClient();
   const { error } = await supabase.from("spazi_comuni").delete().eq("id", id);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/spazi/eliminaSpazio") };
 
   rivalida();
   return {};
@@ -127,7 +128,7 @@ export async function annullaPrenotazioneAdmin(id: string): Promise<{ errore?: s
     .update({ stato: "annullata" })
     .eq("id", id);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/spazi/annullaPrenotazioneAdmin") };
   rivalida();
   return {};
 }

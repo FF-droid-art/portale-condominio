@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { CATEGORIE_DOCUMENTO, DOCUMENTO_MAX_BYTES } from "@/lib/archivio";
 import { FAMIGLIE_ARCHIVIO, testaDiFile, verificaTipoFile } from "@/lib/tipi-file";
 import type { CategoriaDocumento } from "@/lib/types";
@@ -138,7 +139,7 @@ export async function aggiornaDocumento(input: {
     })
     .eq("id", input.id);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/documenti/aggiornaDocumento") };
   rivalida();
   return { ok: true };
 }
@@ -160,7 +161,7 @@ export async function eliminaDocumento(id: string): Promise<{ errore?: string }>
     .single();
 
   const { error } = await supabase.from("documenti_condominio").delete().eq("id", id);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/documenti/eliminaDocumento") };
 
   if (documento?.percorso) {
     await supabase.storage.from("documenti-condominio").remove([documento.percorso]);

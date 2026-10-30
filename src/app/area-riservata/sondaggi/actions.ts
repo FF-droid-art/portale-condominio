@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 
 /**
  * Registra (o corregge) la risposta di una unità a un sondaggio.
@@ -50,7 +51,7 @@ export async function rispondiSondaggio(input: {
     if (error.code === "42501") {
       return { errore: "Il sondaggio è chiuso: non è più possibile rispondere." };
     }
-    return { errore: error.message };
+    return { errore: messaggioErrore(error, "area-riservata/sondaggi/rispondiSondaggio") };
   }
 
   revalidatePath("/area-riservata/sondaggi");

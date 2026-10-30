@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore, registraErrore } from "@/lib/errori";
 import { resend, MITTENTE_EMAIL } from "@/lib/resend";
 import { generaPdf } from "@/lib/documenti/pdf";
 import { generaToken } from "@/lib/firma-otp";
@@ -33,6 +34,7 @@ export async function creaPuntoOdg(
     return { errore: "Compila numero punto e descrizione." };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase.from("punti_odg").insert({
     assemblea_id: assembleaId,
@@ -41,7 +43,7 @@ export async function creaPuntoOdg(
     tipo_maggioranza: tipoMaggioranza || "semplice",
   });
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/creaPuntoOdg") };
   revalidatePath(`/admin/assemblee/${assembleaId}`);
 }
 
@@ -53,13 +55,14 @@ export async function apriVotazione(
   const assembleaId = String(formData.get("assemblea_id") ?? "");
   if (!puntoId || !assembleaId) return { errore: "Punto non valido." };
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase
     .from("punti_odg")
     .update({ stato_votazione: "aperta" })
     .eq("id", puntoId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/apriVotazione") };
   revalidatePath(`/admin/assemblee/${assembleaId}`);
 }
 
@@ -74,6 +77,7 @@ export async function chiudiVotazione(
     return { errore: "Punto non valido." };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
 
   const [{ data: votiPunto }, { data: unitaCondominio }] = await Promise.all([
@@ -107,7 +111,7 @@ export async function chiudiVotazione(
     })
     .eq("id", puntoId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/chiudiVotazione") };
   revalidatePath(`/admin/assemblee/${assembleaId}`);
 }
 
@@ -123,13 +127,16 @@ export async function aggiornaLinkVideoconferenza(
     return { errore: "Il link deve iniziare con https://." };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase
     .from("assemblee")
     .update({ link_videoconferenza: link || null })
     .eq("id", assembleaId);
 
-  if (error) return { errore: error.message };
+  if (error) {
+    return { errore: messaggioErrore(error, "admin/assemblee/aggiornaLinkVideoconferenza") };
+  }
   revalidatePath(`/admin/assemblee/${assembleaId}`);
   revalidatePath(`/area-riservata/assemblee/${assembleaId}`);
 }
@@ -155,6 +162,7 @@ export async function caricaVerbale(
   const tipo = verificaTipoFile(await testaDiFile(file), file.name, FAMIGLIE_PDF_E_IMMAGINI);
   if (!tipo.ok) return { errore: tipo.errore };
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const percorso = `assemblee/${assembleaId}/${Date.now()}.${tipo.estensione}`;
 
@@ -175,7 +183,7 @@ export async function caricaVerbale(
     .update({ verbale_url: percorso })
     .eq("id", assembleaId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/caricaVerbale") };
   revalidatePath(`/admin/assemblee/${assembleaId}`);
   revalidatePath(`/area-riservata/assemblee/${assembleaId}`);
 }
@@ -188,13 +196,14 @@ export async function aggiornaStatoAssemblea(
   const nuovoStato = String(formData.get("nuovo_stato") ?? "");
   if (!assembleaId || !nuovoStato) return { errore: "Stato non valido." };
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase
     .from("assemblee")
     .update({ stato: nuovoStato })
     .eq("id", assembleaId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/aggiornaStatoAssemblea") };
   revalidatePath(`/admin/assemblee/${assembleaId}`);
   revalidatePath("/admin/assemblee");
 }
@@ -216,13 +225,14 @@ export async function aggiornaDettagliAssemblea(
     return { errore: "La convocazione può essere solo prima o seconda." };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase
     .from("assemblee")
     .update({ luogo: luogo || null, convocazione })
     .eq("id", assembleaId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/aggiornaDettagliAssemblea") };
   rivalidaAssemblea(assembleaId);
 }
 
@@ -254,7 +264,7 @@ export async function aggiornaPresenza(input: {
       .delete()
       .eq("assemblea_id", assembleaId)
       .eq("unita_id", unitaId);
-    if (error) return { errore: error.message };
+    if (error) return { errore: messaggioErrore(error, "admin/assemblee/aggiornaPresenza") };
     rivalidaAssemblea(assembleaId);
     return;
   }
@@ -290,7 +300,7 @@ export async function aggiornaPresenza(input: {
     { onConflict: "assemblea_id,unita_id" }
   );
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/aggiornaPresenza") };
   rivalidaAssemblea(assembleaId);
 }
 
@@ -321,13 +331,15 @@ export async function generaESalvaVerbale(
   const { error: erroreUpload } = await supabase.storage
     .from("documenti-condominio")
     .upload(percorso, pdf, { contentType: "application/pdf" });
-  if (erroreUpload) return { errore: erroreUpload.message };
+  if (erroreUpload) {
+    return { errore: messaggioErrore(erroreUpload, "admin/assemblee/generaESalvaVerbale") };
+  }
 
   const { error } = await supabase
     .from("assemblee")
     .update({ verbale_url: percorso })
     .eq("id", assembleaId);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/generaESalvaVerbale") };
 
   rivalidaAssemblea(assembleaId);
 }
@@ -376,7 +388,7 @@ export async function aggiungiFirmatario(
     if (error.code === "23505") {
       return { errore: "Questo indirizzo è già tra i firmatari di questa assemblea." };
     }
-    return { errore: error.message };
+    return { errore: messaggioErrore(error, "admin/assemblee/aggiungiFirmatario") };
   }
 
   rivalidaAssemblea(assembleaId);
@@ -389,7 +401,7 @@ export async function rimuoviFirmatario(
   await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase.from("firme_verbale").delete().eq("id", firmaId);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/rimuoviFirmatario") };
   rivalidaAssemblea(assembleaId);
   return {};
 }
@@ -448,10 +460,12 @@ export async function inviaRichiestaFirma(
         `elettronica con valore legale: serve a registrare la sua approvazione del documento.</p>`,
     });
   } catch (e) {
+    // COD-02: il messaggio del provider di posta resta nel log. Qui conta
+    // sapere che la richiesta non è partita e che si può ritentare.
+    registraErrore("admin/assemblee/inviaRichiestaFirma", e);
     return {
-      errore: `Invio non riuscito (${
-        e instanceof Error ? e.message : "errore sconosciuto"
-      }). Controlla RESEND_API_KEY.`,
+      errore:
+        "Invio della richiesta non riuscito: riprova. Se il problema persiste, verifica la configurazione della posta.",
     };
   }
 
@@ -459,7 +473,7 @@ export async function inviaRichiestaFirma(
     .from("firme_verbale")
     .update({ richiesta_inviata_il: new Date().toISOString() })
     .eq("id", firmaId);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/inviaRichiestaFirma") };
 
   rivalidaAssemblea(assembleaId);
   return { ok: true };

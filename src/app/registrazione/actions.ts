@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { messaggioErroreAuth } from "@/lib/errori";
 import type { Ruolo } from "@/lib/types";
 
 export type StatoForm = { errore?: string; successo?: boolean } | undefined;
@@ -46,11 +47,14 @@ export async function registrati(
     },
   });
 
+  // COD-02: il messaggio di Supabase Auth non arriva mai così com'è a un
+  // visitatore non autenticato. `messaggioErroreAuth` traduce i casi noti
+  // (captcha, password debole, troppe richieste) e — per l'indirizzo già
+  // registrato — restituisce un testo che indica la via d'uscita senza
+  // confermare che quell'account esista, nella stessa logica con cui COD-05
+  // ha reso prudenti login e recupero password.
   if (error) {
-    if (error.code === "captcha_failed") {
-      return { errore: "Verifica anti-bot non riuscita. Ricarica la pagina e riprova." };
-    }
-    return { errore: "Registrazione non riuscita: " + error.message };
+    return { errore: messaggioErroreAuth(error, "registrazione/registrati") };
   }
 
   return { successo: true };

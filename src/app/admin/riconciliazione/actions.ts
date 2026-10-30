@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { MAX_CARATTERI_CSV, MAX_MOVIMENTI, parseEstrattoContoCsv } from "@/lib/riconciliazione";
 
 export type StatoForm = { errore?: string } | undefined;
@@ -84,7 +85,9 @@ export async function importaEstrattoConto(
     )
     .select("id");
 
-  if (error) return { errore: error.message };
+  if (error) {
+    return { errore: messaggioErrore(error, "admin/riconciliazione/importaEstrattoConto") };
+  }
 
   const importati = inseriti?.length ?? 0;
 
@@ -133,14 +136,18 @@ export async function confermaAbbinamento(
     .update({ stato_pagamento: "pagato", data_pagamento: movimento.data })
     .eq("id", ripartizioneId);
 
-  if (erroreRipartizione) return { errore: erroreRipartizione.message };
+  if (erroreRipartizione) {
+    return {
+      errore: messaggioErrore(erroreRipartizione, "admin/riconciliazione/confermaAbbinamento"),
+    };
+  }
 
   const { error } = await supabase
     .from("movimenti_bancari")
     .update({ stato: "abbinato", ripartizione_id: ripartizioneId })
     .eq("id", movimentoId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/riconciliazione/confermaAbbinamento") };
 
   rivalida();
   return {};
@@ -174,7 +181,7 @@ export async function annullaAbbinamento(movimentoId: string): Promise<{ errore?
     .update({ stato: "da_abbinare", ripartizione_id: null })
     .eq("id", movimentoId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/riconciliazione/annullaAbbinamento") };
 
   rivalida();
   return {};
@@ -196,7 +203,7 @@ export async function ignoraMovimento(movimentoId: string): Promise<{ errore?: s
     .update({ stato: "ignorato", ripartizione_id: null })
     .eq("id", movimentoId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/riconciliazione/ignoraMovimento") };
 
   rivalida();
   return {};
@@ -214,7 +221,7 @@ export async function riprendiMovimento(movimentoId: string): Promise<{ errore?:
     .update({ stato: "da_abbinare" })
     .eq("id", movimentoId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/riconciliazione/riprendiMovimento") };
 
   rivalida();
   return {};

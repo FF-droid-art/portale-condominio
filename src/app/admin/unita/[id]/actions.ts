@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { haQuota } from "@/lib/ruoli";
 import {
   codiceFiscaleValido,
@@ -119,6 +120,7 @@ export async function aggiungiSoggetto(
   }
   const residenzaDomicilio = input.residenzaDomicilio?.trim() || null;
 
+  await richiedeAmministratore();
   const supabase = await createClient();
 
   let anagraficaId: string | null = null;
@@ -187,7 +189,7 @@ export async function aggiungiSoggetto(
 
   if (error) {
     if (error.code === "23505") return { errore: "Questo soggetto è già collegato all'unità." };
-    return { errore: error.message };
+    return { errore: messaggioErrore(error, "admin/unita/aggiungiSoggetto") };
   }
 
   revalidatePath(`/admin/unita/${input.unitaId}`);
@@ -288,12 +290,13 @@ export async function aggiornaMillesimi(input: {
     return { errore: "Millesimi non validi." };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase
     .from("unita")
     .update({ millesimi_proprieta: input.millesimi })
     .eq("id", input.unitaId);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/unita/aggiornaMillesimi") };
 
   revalidatePath(`/admin/unita/${input.unitaId}`);
   if (input.condominioId) revalidatePath(`/admin/condomini/${input.condominioId}`);
@@ -304,9 +307,10 @@ export async function rimuoviProprietario(
   id: string,
   unitaId: string
 ): Promise<{ errore?: string }> {
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase.from("unita_proprietari").delete().eq("id", id);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/unita/rimuoviProprietario") };
 
   revalidatePath(`/admin/unita/${unitaId}`);
   return {};

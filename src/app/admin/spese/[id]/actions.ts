@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { inviaNotifichePersonalizzate } from "@/lib/notifiche-invio";
 import { formatValuta } from "@/lib/format";
 import { FAMIGLIE_PDF_E_IMMAGINI, testaDiFile, verificaTipoFile } from "@/lib/tipi-file";
@@ -23,6 +25,7 @@ export async function aggiornaStatoPagamento(
     return { errore: "Dati non validi." };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase
     .from("ripartizioni")
@@ -33,7 +36,7 @@ export async function aggiornaStatoPagamento(
     })
     .eq("id", ripartizioneId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/spese/aggiornaStatoPagamento") };
 
   revalidatePath(`/admin/spese/${spesaId}`);
   revalidatePath("/admin/spese");
@@ -45,6 +48,7 @@ export async function generaRipartizioni(
   importoTotale: number,
   tabellaMillesimaleId?: string | null
 ): Promise<{ errore?: string }> {
+  await richiedeAmministratore();
   const supabase = await createClient();
 
   const { data: unita, error: erroreUnita } = await supabase
@@ -53,7 +57,9 @@ export async function generaRipartizioni(
     .eq("condominio_id", condominioId)
     .order("identificativo");
 
-  if (erroreUnita) return { errore: erroreUnita.message };
+  if (erroreUnita) {
+    return { errore: messaggioErrore(erroreUnita, "admin/spese/generaRipartizioni") };
+  }
   if (!unita?.length) {
     return { errore: "Il condominio non ha ancora unità: aggiungile prima." };
   }
@@ -68,7 +74,9 @@ export async function generaRipartizioni(
       .select("unita_id, valore")
       .eq("tabella_id", tabellaMillesimaleId);
 
-    if (erroreValori) return { errore: erroreValori.message };
+    if (erroreValori) {
+      return { errore: messaggioErrore(erroreValori, "admin/spese/generaRipartizioni") };
+    }
     millesimiPerUnita = new Map(unita.map((u) => [u.id, 0]));
     for (const v of valori ?? []) {
       millesimiPerUnita.set(v.unita_id, v.valore);
@@ -100,7 +108,7 @@ export async function generaRipartizioni(
     Math.round((righe[righe.length - 1].importo_dovuto + residuo) * 100) / 100;
 
   const { error } = await supabase.from("ripartizioni").insert(righe);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/spese/generaRipartizioni") };
 
   await notificaRipartizioni(spesaId, righe);
 
@@ -178,6 +186,7 @@ export async function caricaDocumentoSpesa(
   const tipo = verificaTipoFile(await testaDiFile(file), file.name, FAMIGLIE_PDF_E_IMMAGINI);
   if (!tipo.ok) return { errore: tipo.errore };
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const percorso = `spese/${spesaId}/${Date.now()}.${tipo.estensione}`;
 
@@ -198,6 +207,6 @@ export async function caricaDocumentoSpesa(
     .update({ documento_url: percorso })
     .eq("id", spesaId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/spese/caricaDocumentoSpesa") };
   revalidatePath(`/admin/spese/${spesaId}`);
 }

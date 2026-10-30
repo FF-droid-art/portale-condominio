@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { validaRigaSpesa } from "@/lib/import/validazione";
 import type { ErroreRiga, RigaImportSpesa } from "@/lib/import/tipi";
 
@@ -14,6 +16,7 @@ const MAX_RIGHE_IMPORT = 5000;
 
 export async function elencaIdentificativiUnita(condominioId: string): Promise<string[]> {
   if (!condominioId) return [];
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { data } = await supabase
     .from("unita")
@@ -55,14 +58,12 @@ export async function importaSpeseStoriche(
     gruppi.set(chiave, visti);
   }
 
+  // COD-04: `auth.getUser()` controllava la sessione ma non il ruolo, e un
+  // non-amministratore si fermava solo alla RLS (o al `raise exception` della
+  // funzione di import) con un errore di database per messaggio. Qui il
+  // controllo è esplicito e, se non passa, porta al login o alla propria area.
+  const amministratore = await richiedeAmministratore();
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return { ok: false, erroreGenerale: "Sessione scaduta: effettua di nuovo l'accesso." };
-  }
 
   const { data: batch, error: erroreBatch } = await supabase
     .from("import_batches")
@@ -70,14 +71,16 @@ export async function importaSpeseStoriche(
       condominio_id: condominioId,
       tipo: "spese",
       nome_file: nomeFile,
-      creato_da: user.id,
+      creato_da: amministratore.id,
     })
     .select("id")
     .single();
   if (erroreBatch || !batch) {
     return {
       ok: false,
-      erroreGenerale: erroreBatch?.message ?? "Impossibile registrare l'importazione.",
+      erroreGenerale: erroreBatch
+        ? messaggioErrore(erroreBatch, "admin/importa/importaSpeseStoriche")
+        : "Impossibile registrare l'importazione: riprova.",
     };
   }
 
@@ -89,7 +92,9 @@ export async function importaSpeseStoriche(
 
   if (error) {
     await supabase.from("import_batches").delete().eq("id", batch.id);
-    return { ok: false, erroreGenerale: error.message };
+    return {
+      ok: false, erroreGenerale: messaggioErrore(error, "admin/importa/importaSpeseStoriche"),
+    };
   }
 
   const risultato = data?.[0] as

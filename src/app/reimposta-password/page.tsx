@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, LinkIcon, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { messaggioErroreAuth } from "@/lib/errori";
 import { AuthShell, AuthLink } from "@/components/auth-shell";
 import { Field } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -79,8 +80,14 @@ export default function ReimpostaPasswordPage() {
     const { error } = await supabase.auth.updateUser({ password });
     setPending(false);
 
+    // COD-02: questa è l'unica traduzione che gira nel browser (i token di
+    // recupero vivono nel frammento dell'URL e non arrivano al server),
+    // quindi `messaggioErroreAuth` logga nella console del browser invece
+    // che in quella del server — ma il testo mostrato resta applicativo:
+    // «La nuova password deve essere diversa da quella attuale», non il
+    // messaggio di GoTrue.
     if (error) {
-      setErrore(error.message);
+      setErrore(messaggioErroreAuth(error, "reimposta-password"));
       return;
     }
     setFatto(true);

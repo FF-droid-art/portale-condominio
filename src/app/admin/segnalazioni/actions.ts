@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { PRIORITA_SEGNALAZIONE, STATI_SEGNALAZIONE } from "@/lib/segnalazioni";
 import type { PrioritaSegnalazione, StatoSegnalazione } from "@/lib/types";
 
@@ -52,7 +53,7 @@ export async function aggiornaSegnalazione(input: {
     })
     .eq("id", input.id);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/segnalazioni/aggiornaSegnalazione") };
 
   rivalida(input.id);
   return { ok: true };
@@ -79,7 +80,9 @@ export async function aggiungiNotaAmministratore(
     interna,
   });
 
-  if (error) return { errore: error.message };
+  if (error) {
+    return { errore: messaggioErrore(error, "admin/segnalazioni/aggiungiNotaAmministratore") };
+  }
   rivalida(segnalazioneId);
 }
 
@@ -89,7 +92,7 @@ export async function eliminaSegnalazione(id: string): Promise<{ errore?: string
 
   const supabase = await createClient();
   const { error } = await supabase.from("segnalazioni").delete().eq("id", id);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/segnalazioni/eliminaSegnalazione") };
 
   revalidatePath("/admin/segnalazioni");
   revalidatePath("/area-riservata/segnalazioni");

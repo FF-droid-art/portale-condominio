@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { TIPI_EVENTO } from "@/lib/notifiche";
 
 export type StatoForm = { errore?: string; ok?: true } | undefined;
@@ -37,7 +38,9 @@ export async function salvaPreferenzeNotifiche(
     .from("preferenze_notifiche")
     .upsert(righe, { onConflict: "utente_id,tipo_evento" });
 
-  if (error) return { errore: error.message };
+  if (error) {
+    return { errore: messaggioErrore(error, "area-riservata/notifiche/salvaPreferenzeNotifiche") };
+  }
 
   revalidatePath("/area-riservata/notifiche");
   return { ok: true };

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { MAX_OPZIONI_SONDAGGIO } from "@/lib/sondaggi";
 
 // Un file "use server" può esportare solo funzioni asincrone: costanti e tipi
@@ -62,7 +63,11 @@ export async function creaSondaggio(
     .single();
 
   if (error || !sondaggio) {
-    return { errore: error?.message ?? "Impossibile creare il sondaggio." };
+    return {
+      errore: error
+        ? messaggioErrore(error, "admin/sondaggi/creaSondaggio")
+        : "Impossibile creare il sondaggio: riprova.",
+    };
   }
 
   const { error: erroreOpzioni } = await supabase.from("sondaggio_opzioni").insert(
@@ -72,7 +77,7 @@ export async function creaSondaggio(
   if (erroreOpzioni) {
     // Un sondaggio senza opzioni non è rispondibile: meglio non lasciarlo lì.
     await supabase.from("sondaggi").delete().eq("id", sondaggio.id);
-    return { errore: erroreOpzioni.message };
+    return { errore: messaggioErrore(erroreOpzioni, "admin/sondaggi/creaSondaggio") };
   }
 
   revalidatePath("/admin/sondaggi");
@@ -87,7 +92,7 @@ export async function cambiaStatoSondaggio(
 
   const supabase = await createClient();
   const { error } = await supabase.from("sondaggi").update({ stato }).eq("id", sondaggioId);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/sondaggi/cambiaStatoSondaggio") };
 
   revalidatePath("/admin/sondaggi");
   revalidatePath(`/admin/sondaggi/${sondaggioId}`);
@@ -101,7 +106,7 @@ export async function eliminaSondaggio(sondaggioId: string): Promise<{ errore?: 
 
   const supabase = await createClient();
   const { error } = await supabase.from("sondaggi").delete().eq("id", sondaggioId);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/sondaggi/eliminaSondaggio") };
 
   revalidatePath("/admin/sondaggi");
   revalidatePath("/area-riservata/sondaggi");

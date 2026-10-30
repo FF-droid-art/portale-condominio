@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import {
   CATEGORIE_FORNITORE,
   PERIODICITA,
@@ -50,7 +51,7 @@ export async function creaFornitore(
     note: String(formData.get("note") ?? "").trim() || null,
   });
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/manutenzioni/creaFornitore") };
   rivalida();
 }
 
@@ -85,7 +86,7 @@ export async function aggiornaFornitore(input: {
     })
     .eq("id", input.id);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/manutenzioni/aggiornaFornitore") };
   rivalida();
   return { ok: true };
 }
@@ -96,7 +97,7 @@ export async function eliminaFornitore(id: string): Promise<{ errore?: string }>
 
   const supabase = await createClient();
   const { error } = await supabase.from("fornitori").delete().eq("id", id);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/manutenzioni/eliminaFornitore") };
 
   rivalida();
   return {};
@@ -142,7 +143,7 @@ export async function creaManutenzione(
     costo_previsto: costo ? Number(costo.replace(",", ".")) : null,
   });
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/manutenzioni/creaManutenzione") };
   rivalida();
 }
 
@@ -167,7 +168,11 @@ export async function completaManutenzione(
     .single();
 
   if (erroreLettura || !manutenzione) {
-    return { errore: erroreLettura?.message ?? "Manutenzione non trovata." };
+    return {
+      errore: erroreLettura
+        ? messaggioErrore(erroreLettura, "admin/manutenzioni/completaManutenzione")
+        : "Manutenzione non trovata.",
+    };
   }
 
   const eseguitaIl =
@@ -180,7 +185,7 @@ export async function completaManutenzione(
     .update({ stato: "completata", data_completamento: eseguitaIl })
     .eq("id", id);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/manutenzioni/completaManutenzione") };
 
   // La successiva si conta dalla scadenza prevista, non dal giorno in cui è
   // stata spuntata: un intervento fatto in ritardo non deve spostare in avanti
@@ -196,7 +201,9 @@ export async function completaManutenzione(
       periodicita: manutenzione.periodicita,
       costo_previsto: manutenzione.costo_previsto,
     });
-    if (erroreNuova) return { errore: erroreNuova.message };
+    if (erroreNuova) {
+      return { errore: messaggioErrore(erroreNuova, "admin/manutenzioni/completaManutenzione") };
+    }
   }
 
   rivalida();
@@ -213,7 +220,7 @@ export async function annullaManutenzione(id: string): Promise<{ errore?: string
     .update({ stato: "annullata" })
     .eq("id", id);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/manutenzioni/annullaManutenzione") };
   rivalida();
   return {};
 }
@@ -224,7 +231,7 @@ export async function eliminaManutenzione(id: string): Promise<{ errore?: string
 
   const supabase = await createClient();
   const { error } = await supabase.from("manutenzioni_programmate").delete().eq("id", id);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/manutenzioni/eliminaManutenzione") };
 
   rivalida();
   return {};

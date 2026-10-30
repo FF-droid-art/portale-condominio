@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 
 export type StatoForm = { errore?: string } | undefined;
 
@@ -28,6 +30,7 @@ export async function creaSpesa(
     };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase.from("spese").insert({
     condominio_id: condominioId,
@@ -38,7 +41,7 @@ export async function creaSpesa(
     fornitore: fornitore || null,
   });
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/spese/creaSpesa") };
 
   revalidatePath("/admin/spese");
 }

@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { COOKIE_IMPERSONAZIONE, type SessioneImpersonazione } from "@/lib/impersonazione";
 import type { Ruolo } from "@/lib/types";
 
@@ -22,13 +23,14 @@ export async function cambiaRuolo(
     return { errore: "Dati non validi." };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase
     .from("utenti")
     .update({ ruolo })
     .eq("id", utenteId);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/utenti/cambiaRuolo") };
 
   revalidatePath("/admin/utenti");
 }

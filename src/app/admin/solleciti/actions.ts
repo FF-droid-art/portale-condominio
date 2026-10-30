@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { inviaNotificaEmailMultipla } from "@/lib/notifiche-invio";
 import { ETICHETTE_LIVELLO, isLivelloSollecito } from "@/lib/solleciti";
 import { formatValuta } from "@/lib/format";
@@ -61,7 +62,7 @@ export async function registraSollecito(input: {
     note: input.note.trim() || null,
   });
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/solleciti/registraSollecito") };
 
   let emailInviate = 0;
   let emailSaltate = 0;

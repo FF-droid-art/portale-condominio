@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { richiedeAmministratore } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { inviaNotificaEmailMultipla } from "@/lib/notifiche-invio";
 import { formatDataOra } from "@/lib/format";
 
@@ -19,6 +21,7 @@ export async function creaAssemblea(
     return { errore: "Compila condominio, data e tipo." };
   }
 
+  await richiedeAmministratore();
   const supabase = await createClient();
   const { error } = await supabase.from("assemblee").insert({
     condominio_id: condominioId,
@@ -26,7 +29,7 @@ export async function creaAssemblea(
     tipo,
   });
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "admin/assemblee/creaAssemblea") };
 
   await notificaNuovaAssemblea(condominioId, dataAssemblea, tipo);
 

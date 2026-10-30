@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import {
   CATEGORIE_SEGNALAZIONE,
   FOTO_MAX_BYTES,
@@ -161,7 +162,9 @@ export async function aggiungiNotaCondomino(
     interna: false,
   });
 
-  if (error) return { errore: error.message };
+  if (error) {
+    return { errore: messaggioErrore(error, "area-riservata/segnalazioni/aggiungiNotaCondomino") };
+  }
   rivalida(segnalazioneId);
 }
 
@@ -193,7 +196,9 @@ export async function ritiraSegnalazione(id: string): Promise<{ errore?: string 
   }
 
   const { error } = await supabase.from("segnalazioni").delete().eq("id", id);
-  if (error) return { errore: error.message };
+  if (error) {
+    return { errore: messaggioErrore(error, "area-riservata/segnalazioni/ritiraSegnalazione") };
+  }
 
   rivalida();
   redirect("/area-riservata/segnalazioni");

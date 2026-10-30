@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { verificaLimiteDelega } from "@/lib/deleghe";
 
 export type StatoForm = { errore?: string } | undefined;
@@ -44,7 +45,7 @@ export async function esprimiVoto(
       { onConflict: "punto_id,unita_id" }
     );
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "area-riservata/assemblee/esprimiVoto") };
   revalidatePath(`/area-riservata/assemblee/${assembleaId}`);
 }
 
@@ -99,7 +100,7 @@ export async function creaDelega(
 
   if (error) {
     if (error.code === "23505") return { errore: "Hai già delegato questa unità per questa assemblea." };
-    return { errore: error.message };
+    return { errore: messaggioErrore(error, "area-riservata/assemblee/creaDelega") };
   }
 
   revalidatePath(`/area-riservata/assemblee/${assembleaId}`);
@@ -109,9 +110,10 @@ export async function revocaDelega(
   delegaId: string,
   assembleaId: string
 ): Promise<{ errore?: string }> {
+  await richiedeUtente();
   const supabase = await createClient();
   const { error } = await supabase.from("deleghe").delete().eq("id", delegaId);
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "area-riservata/assemblee/revocaDelega") };
 
   revalidatePath(`/area-riservata/assemblee/${assembleaId}`);
   return {};

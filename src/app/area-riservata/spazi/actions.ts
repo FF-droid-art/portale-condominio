@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { richiedeUtente } from "@/lib/supabase/dal";
+import { messaggioErrore } from "@/lib/errori";
 import { adessoLocale } from "@/lib/fuso";
 import { normalizzaIstante, validaPrenotazione } from "@/lib/prenotazioni";
 
@@ -85,7 +86,7 @@ export async function prenotaSpazio(
     if (error.code === "23505") {
       return { errore: "Qualcuno ha appena prenotato questa fascia oraria: scegline un'altra." };
     }
-    return { errore: error.message };
+    return { errore: messaggioErrore(error, "area-riservata/spazi/prenotaSpazio") };
   }
 
   rivalida();
@@ -122,7 +123,7 @@ export async function annullaPrenotazione(id: string): Promise<{ errore?: string
     .update({ stato: "annullata" })
     .eq("id", id);
 
-  if (error) return { errore: error.message };
+  if (error) return { errore: messaggioErrore(error, "area-riservata/spazi/annullaPrenotazione") };
 
   rivalida();
   return {};
