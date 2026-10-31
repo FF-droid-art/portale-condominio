@@ -4101,3 +4101,55 @@ begin
   return new;
 end;
 $$;
+
+-- ============================================================
+-- Correzione: genera_codice_invito() non trovava gen_random_bytes
+--
+-- Su Supabase l'estensione pgcrypto (che fornisce gen_random_bytes, a
+-- differenza di gen_random_uuid che da Postgres 13 è nativo e non
+-- richiede l'estensione) viene creata nello schema `extensions`, non in
+-- `public`. La funzione sopra imposta `search_path = public`: non
+-- trovava la funzione ed ogni generazione di codice falliva con
+-- "function gen_random_bytes(integer) does not exist" — scoperto da
+-- `npm run test:isolamento` appena applicata la migrazione sul progetto
+-- di test, non dalla sola lettura del codice.
+--
+-- La correzione aggiunge `extensions` al search_path, senza toglierne
+-- `public` (le altre funzioni di questo blocco continuano a risolvere i
+-- nomi di tabella senza qualificarli).
+-- ============================================================
+
+create or replace function public.genera_codice_invito()
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public, extensions
+as $$
+declare
+  alfabeto constant text := '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+  base constant int := length(alfabeto);      -- 30
+  soglia constant int := (256 / base) * base; -- 240
+  candidato text;
+  b int;
+begin
+  for tentativo in 1..10 loop
+    candidato := '';
+    for i in 1..8 loop
+      loop
+        b := get_byte(gen_random_bytes(1), 0);
+        exit when b < soglia;
+      end loop;
+      candidato := candidato || substr(alfabeto, 1 + (b % base), 1);
+    end loop;
+
+    if not exists (select 1 from inviti_unita where codice = candidato) then
+      return candidato;
+    end if;
+  end loop;
+
+  raise exception 'Impossibile generare un codice di invito univoco dopo 10 tentativi.';
+end;
+$$;
+
+revoke execute on function public.genera_codice_invito() from anon, authenticated;
